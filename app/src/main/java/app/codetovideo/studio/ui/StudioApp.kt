@@ -175,7 +175,7 @@ fun StudioApp(activity: MainActivity) {
                                         refreshGallery++
                                         Toast.makeText(activity, "Video tersimpan di Galeri", Toast.LENGTH_LONG).show()
                                     }.onFailure { error ->
-                                        renderMessage = error.message ?: "Render gagal."
+                                        renderMessage = error.message?.takeIf { it.isNotBlank() } ?: "${error::class.java.simpleName}: Render gagal."
                                         Toast.makeText(activity, renderMessage, Toast.LENGTH_LONG).show()
                                     }
                                 }

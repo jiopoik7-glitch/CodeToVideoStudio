@@ -51,12 +51,12 @@ class WebCanvasRuntime(private val context: Context) {
             settings.allowUniversalAccessFromFileURLs = false
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
-            settings.blockNetworkLoads = true
+            settings.blockNetworkLoads = false
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
             webChromeClient = android.webkit.WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse? =
-                    loader.shouldInterceptRequest(request.url)
+                    loader.shouldInterceptRequest(request.url) ?: WebResourceResponse("text/plain", "UTF-8", 403, "Blocked", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
 
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean =
                     request.url.host != WebViewAssetLoader.DEFAULT_DOMAIN
