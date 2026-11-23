@@ -37,7 +37,7 @@ class WebCanvasRuntime(private val context: Context) {
     @Volatile private var pending: PendingFrame? = null
 
     fun createWebView(): WebView {
-        webView?.let { return it }
+        webView?.let { (it.parent as? android.view.ViewGroup)?.removeView(it); return it }
         val loader = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", SecureStudioAssetHandler(context))
             .build()
