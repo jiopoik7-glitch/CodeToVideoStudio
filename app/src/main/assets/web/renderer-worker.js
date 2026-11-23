@@ -2,18 +2,7 @@
 
 // The worker has no DOM or native bridge. Keep all untrusted source execution here
 // so the host can terminate a non-yielding while(true) loop.
-self.fetch = undefined;
-self.XMLHttpRequest = undefined;
-self.WebSocket = undefined;
-self.importScripts = undefined;
-self.indexedDB = undefined;
-self.caches = undefined;
-self.BroadcastChannel = undefined;
-self.Worker = undefined;
-self.WebAssembly = undefined;
-self.setTimeout = undefined;
-self.setInterval = undefined;
-self.requestAnimationFrame = undefined;
+["fetch","XMLHttpRequest","WebSocket","importScripts","indexedDB","caches","BroadcastChannel","Worker","WebAssembly","setTimeout","setInterval","requestAnimationFrame"].forEach((k)=>{try{Object.defineProperty(self,k,{value:undefined,writable:false,configurable:true});}catch(_){try{self[k]=undefined;}catch(__){}}});
 Math.random = () => { throw new Error('Math.random() is disabled; use rand(index).'); };
 
 let canvas = null;
@@ -40,7 +29,7 @@ function seededRandom(seed, index) {
 function ensureCanvas(width, height) {
   if (!canvas || width !== currentWidth || height !== currentHeight) {
     canvas = new OffscreenCanvas(width, height);
-    ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+    ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) throw new Error('OffscreenCanvas 2D context is not supported.');
     currentWidth = width;
     currentHeight = height;
@@ -64,7 +53,7 @@ function render(message) {
   // restore() from contaminating the next independently rendered frame.
   canvas.width = W;
   canvas.height = H;
-  ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+  ctx = canvas.getContext('2d', { alpha: true });
   if (!ctx) throw new Error('Canvas 2D context could not be restored.');
   ctx.clearRect(0, 0, W, H);
 
