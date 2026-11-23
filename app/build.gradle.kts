@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "app.codetovideo.studio"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.codetovideo.studio"
