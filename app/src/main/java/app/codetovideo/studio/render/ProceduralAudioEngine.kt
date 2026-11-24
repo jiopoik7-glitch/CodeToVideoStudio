@@ -24,7 +24,7 @@ data class EncodedAudioTrack(
 )
 
 /**
- * Offline 44.1 kHz Stereo Procedural SFX (20 SFX + 5 Ambience) & AAC Encoder v0.3.
+ * Offline 44.1 kHz Stereo Procedural SFX (26 SFX + 6 Ambience Beds) & AAC Encoder v0.4.
  */
 object ProceduralAudioEngine {
     private const val SAMPLE_RATE = 44_100
@@ -112,6 +112,7 @@ object ProceduralAudioEngine {
             "forest_air" -> doubleArrayOf(174.61, 220.00, 261.63, 329.63)
             "minimal_pulse" -> doubleArrayOf(130.81, 196.00, 246.94, 293.66)
             "ios_glass_chimes" -> doubleArrayOf(261.63, 329.63, 392.00, 523.25, 659.25)
+            "apple_keynote_minimal" -> doubleArrayOf(146.83, 220.00, 293.66, 369.99, 440.00)
             else -> doubleArrayOf(130.81, 164.81, 196.00, 246.94, 293.66)
         }
 
@@ -124,6 +125,18 @@ object ProceduralAudioEngine {
             var r = 0f
 
             when (type) {
+                "apple_keynote_minimal" -> {
+                    val bpm = 114.0
+                    val beat = (t * bpm / 60.0)
+                    val beatPos = beat % 1.0
+                    val step = beat.toInt() % chord.size
+                    val kickEnv = exp(-beatPos * 10.5).toFloat()
+                    val kick = sin(TWO_PI * (58.0 + 36.0 * exp(-beatPos * 24.0)) * t).toFloat() * kickEnv * 0.34f
+                    val marimba = sin(TWO_PI * chord[step] * 2.0 * t).toFloat() * exp(-beatPos * 9.0).toFloat() * 0.22f
+                    val airPad = (sin(TWO_PI * chord[0] * t) * 0.14f + sin(TWO_PI * chord[1] * t) * 0.11f).toFloat()
+                    l = kick + airPad + marimba * 0.82f
+                    r = kick + airPad + marimba * 1.18f
+                }
                 "ios_glass_chimes" -> {
                     val swell = 0.6f + 0.4f * sin(TWO_PI * 0.25 * t).toFloat()
                     for (k in chord.indices) {
@@ -247,6 +260,45 @@ object ProceduralAudioEngine {
             "whoosh" -> writeSweepNoise(0.46, 0.04f, 0.36f, 0.42, 160.0)
             "whip" -> writeSweepNoise(0.26, 0.08f, 0.62f, 0.32, 240.0)
             "swoosh_soft" -> writeSweepNoise(0.38, 0.03f, 0.22f, 0.45, 0.0)
+            "swoosh_deep" -> {
+                writeSweepNoise(0.62, 0.02f, 0.24f, 0.40, 110.0)
+                writePitchTone(0.55, 115.0, 44.0, 4.2, 0.14f)
+            }
+            "water_drop" -> {
+                writePitchTone(0.16, 480.0, 1520.0, 7.6, 0.16f)
+                writePitchTone(0.08, 1340.0, 1980.0, 11.0, 0.08f)
+            }
+            "liquid_morph" -> {
+                writeSweepNoise(0.34, 0.05f, 0.34f, 0.44, 420.0)
+                writePitchTone(0.32, 340.0, 860.0, 5.4, 0.22f)
+            }
+            "glass_shimmer" -> {
+                val notes = doubleArrayOf(1318.5, 1760.0, 2093.0, 2637.0, 3135.9)
+                val n = (0.95 * SAMPLE_RATE).toInt()
+                for (i in 0 until n) {
+                    val t = i.toDouble() / SAMPLE_RATE
+                    var l = 0f
+                    var r = 0f
+                    for (k in notes.indices) {
+                        val dt = t - k * 0.045
+                        if (dt < 0) continue
+                        val env = min(1.0, dt / 0.008) * exp(-dt * 4.8)
+                        val f = notes[k] * pitch
+                        val sig = sin(TWO_PI * f * dt).toFloat() * env.toFloat() * 0.18f
+                        l += sig * (if (k % 2 == 0) 1.2f else 0.78f)
+                        r += sig * (if (k % 2 == 0) 0.78f else 1.2f)
+                    }
+                    addSample(mix, totalFrames, start + i, l * gL, r * gR)
+                }
+            }
+            "page_flip" -> {
+                writeSweepNoise(0.22, 0.12f, 0.56f, 0.28, 320.0)
+                writePitchTone(0.06, 640.0, 380.0, 9.0, 0.1f)
+            }
+            "type_key" -> {
+                writePitchTone(0.026, 2200.0, 980.0, 14.0, 0.30f)
+                writeSweepNoise(0.022, 0.32f, 0.78f, 0.12, 0.0)
+            }
             "glass_slide" -> {
                 writeSweepNoise(0.28, 0.06f, 0.42f, 0.38, 620.0)
                 writePitchTone(0.24, 980.0, 1480.0, 6.2, 0.18f)

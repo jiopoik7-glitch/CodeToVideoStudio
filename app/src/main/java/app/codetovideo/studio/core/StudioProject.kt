@@ -27,7 +27,7 @@ data class RenderSettings(
 
 data class StudioProject(
     val projectId: String = UUID.randomUUID().toString(),
-    val name: String = "Liquid Glass Studio",
+    val name: String = "iOS 26 Liquid Glass Hero",
     val sourceBody: String = DEFAULT_SOURCE,
     val seed: Int = 26,
     val propsValues: Map<String, String> = emptyMap(),
@@ -36,7 +36,7 @@ data class StudioProject(
     val updatedAtEpochMs: Long = System.currentTimeMillis()
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
-        put("schemaVersion", 3)
+        put("schemaVersion", 4)
         put("projectId", projectId)
         put("name", name)
         put("sourceBody", sourceBody)
@@ -88,30 +88,30 @@ data class StudioProject(
 
 const val DEFAULT_SOURCE = """/*<studio-meta>
 {
-  "schemaVersion": 3,
-  "title": "Liquid Glass Studio",
+  "schemaVersion": 4,
+  "title": "iOS 26 Liquid Glass Hero",
   "defaultDurationSeconds": 5,
   "seed": 26,
   "props": [
-    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.3"},
+    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.4"},
     {"key":"title","label":"Judul Utama","type":"text","default":"Desain kaca yang"},
-    {"key":"highlight","label":"Kata Aksen","type":"text","default":"hidup."},
-    {"key":"accent","label":"Warna Aksen","type":"color","default":"#DCE5F0"}
+    {"key":"highlight","label":"Kata Aksen","type":"text","default":"mengalir."},
+    {"key":"accent","label":"Warna Aksen","type":"color","default":"#DCE8F5"}
   ],
   "audio": {
     "ambience": "ios_glass_chimes",
     "ambienceVolume": 0.24,
     "cues": [
-      {"p": 0.02, "sfx": "glass_slide", "gain": 0.80},
-      {"p": 0.24, "sfx": "glass_tap", "gain": 0.78, "pitch": 1.05},
+      {"p": 0.02, "sfx": "liquid_morph", "gain": 0.80},
+      {"p": 0.24, "sfx": "water_drop", "gain": 0.78, "pitch": 1.04},
       {"p": 0.44, "sfx": "glass_tap", "gain": 0.78, "pitch": 1.18},
-      {"p": 0.76, "sfx": "chime", "gain": 0.88}
+      {"p": 0.76, "sfx": "glass_shimmer", "gain": 0.88}
     ]
   }
 }
 </studio-meta>*/
 
-const accent = String(P.accent || "#DCE5F0");
+const accent = String(P.accent || "#DCE8F5");
 const pad = Math.min(W, H) * 0.068;
 const innerW = W - pad * 2;
 const settle = spring({ frame, fps, config: { damping: 16, stiffness: 125 } });
@@ -123,11 +123,16 @@ const cState = {
   rot: drift.rot
 };
 
-ui.drawMeshBg(ctx, W, H, "#090C11", [
-  { x: 0.82, y: 0.16, r: 0.76, col: accent, a: 0.30 },
-  { x: 0.16, y: 0.84, r: 0.72, col: "#7A93B2", a: 0.24 },
+ui.drawMeshBg(ctx, W, H, "#090C12", [
+  { x: 0.82, y: 0.16, r: 0.78, col: accent, a: 0.32 },
+  { x: 0.16, y: 0.84, r: 0.74, col: "#7497C4", a: 0.26 },
   { x: 0.50, y: 0.52, r: 0.58, col: "#FFFFFF", a: 0.08 }
 ], t);
+
+ctx.save();
+cam.apply(ctx, cState, 0.55);
+fx.particles.bokeh(ctx, 12, accent, 0.14);
+ctx.restore();
 
 ctx.save();
 cam.apply(ctx, cState, 1.0);
@@ -136,28 +141,28 @@ const pillP = fx.stagger(frame, 0, 4);
 ctx.save();
 ctx.globalAlpha = ui.clamp(pillP, 0, 1);
 ctx.translate(0, (1 - pillP) * 20 * S);
-ui.drawPill(ctx, pad, H * 0.18, String(P.eyebrow || "RENDER VIDEO CODE V0.3"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
+ui.drawPill(ctx, pad, H * 0.17, String(P.eyebrow || "RENDER VIDEO CODE V0.4"), "rgba(255,255,255,0.14)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
 ctx.restore();
 
 const fSize = Math.round(80 * S);
 const used = ui.drawRichText(ctx, [
   { text: String(P.title || "Desain kaca yang") },
-  { text: String(P.highlight || "hidup."), italic: true, color: accent }
-], pad, H * 0.25, innerW, fSize, fSize * 1.14, "#FFFFFF", ui.seg(p, 0.06, 0.42), "left");
+  { text: String(P.highlight || "mengalir."), italic: true, color: accent }
+], pad, H * 0.24, innerW, fSize, fSize * 1.18, "#FFFFFF", ui.seg(p, 0.06, 0.42), "left");
 
 const cards = [
-  { title: "Liquid Glass Specular", sub: "Refleksi optik + spring physics", val: 0.96, lbl: "96%" },
-  { title: "20 Studio SFX Engine", sub: "Sinkron otomatis ke trek AAC MP4", val: 1.00, lbl: "100%" }
+  { title: "Liquid Glass Specular", sub: "Chromatic rim + moving sheen", val: 0.96, lbl: "96%" },
+  { title: "26 SFX + Motion Director", sub: "Transitions, Charts, 3D & AAC", val: 1.00, lbl: "100%" }
 ];
-const cH = 172 * S;
-const cStart = H * 0.25 + used + 56 * S;
+const cH = 176 * S;
+const cStart = H * 0.24 + used + 58 * S;
 for (let i = 0; i < cards.length; i++) {
   const sp = fx.stagger(frame, i + 2, Math.round(fps * 0.26));
   const cy = cStart + i * (cH + 26 * S);
   ctx.save();
   ctx.globalAlpha = ui.clamp(sp * 1.25, 0, 1);
   ctx.translate(0, (1 - sp) * 62 * S);
-  ui.drawGlassCard(ctx, pad, cy, innerW, cH, 28 * S, { light: false });
+  ui.drawLiquidGlass(ctx, pad, cy, innerW, cH, 28 * S, { light: false, sweep: (p * 1.4 + i * 0.35) % 1 });
 
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -165,16 +170,16 @@ for (let i = 0; i < cards.length; i++) {
   ctx.font = "700 " + Math.max(15, Math.round(32 * S)) + "px sans-serif";
   ctx.fillText(cards[i].title, pad + 32 * S, cy + cH * 0.37, innerW - 180 * S);
 
-  ctx.fillStyle = "rgba(220,230,242,0.72)";
+  ctx.fillStyle = "rgba(220,232,246,0.74)";
   ctx.font = "400 " + Math.max(12, Math.round(23 * S)) + "px sans-serif";
   ctx.fillText(cards[i].sub, pad + 32 * S, cy + cH * 0.67, innerW - 180 * S);
 
-  const rp = ease.ios(ui.seg(p, 0.24 + i * 0.14, 0.86));
+  const rp = ease.liquid(ui.seg(p, 0.24 + i * 0.14, 0.86));
   ui.drawRing(ctx, pad + innerW - 76 * S, cy + cH * 0.5, 44 * S, cards[i].val * rp, accent, cards[i].lbl, "rgba(255,255,255,0.12)", "#FFFFFF", 6 * S);
   ctx.restore();
 }
 ctx.restore();
 
-ui.drawGrain(ctx, W, H, rand, 70, 0.035);
+ui.drawGrain(ctx, W, H, rand, 70, 0.032);
 ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, "#FFFFFF", "rgba(255,255,255,0.14)");
 """

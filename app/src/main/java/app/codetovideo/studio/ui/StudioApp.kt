@@ -2,6 +2,7 @@ package app.codetovideo.studio.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.MediaController
 import android.widget.Toast
 import android.widget.VideoView
@@ -9,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -21,7 +23,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -50,18 +55,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,7 +79,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -94,6 +103,8 @@ import app.codetovideo.studio.storage.GalleryVideo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private enum class StudioTab(val label: String) {
     EDITOR("Editor"),
@@ -104,49 +115,133 @@ private enum class StudioTab(val label: String) {
 }
 
 // =======================================================
-// PALET & KOMPONEN iOS 26 LIQUID GLASS
+// PALET ADAPTIF iOS 26 LIQUID GLASS (DARK TITANIUM / LIGHT FROSTED)
 // =======================================================
-private val GlassTextPrimary = Color(0xFFF6F8FB)
-private val GlassTextSecondary = Color(0xFFA7B2C2)
-private val GlassTextMuted = Color(0xFF748091)
-private val GlassSilverAccent = Color(0xFFE7ECF2)
-private val GlassMintDot = Color(0xFF5CE1A8)
+private data class GlassPalette(
+    val isLight: Boolean,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val textMuted: Color,
+    val accent: Color,
+    val iosBlue: Color,
+    val iosGreen: Color,
+    val panelTop: Color,
+    val panelMid: Color,
+    val panelBot: Color,
+    val borderTop: Color,
+    val borderMid: Color,
+    val borderBot: Color,
+    val wellBg: Color,
+    val dockTop: Color,
+    val dockBot: Color,
+    val dialogBg: Color
+)
+
+private fun glassPalette(light: Boolean): GlassPalette = if (light) {
+    GlassPalette(
+        isLight = true,
+        textPrimary = Color(0xFF0E141D),
+        textSecondary = Color(0xFF4B586B),
+        textMuted = Color(0xFF7B8799),
+        accent = Color(0xFF0A84FF),
+        iosBlue = Color(0xFF007AFF),
+        iosGreen = Color(0xFF34C759),
+        panelTop = Color(0xCCFFFFFF),
+        panelMid = Color(0x9EF5F8FC),
+        panelBot = Color(0xB8FFFFFF),
+        borderTop = Color(0xF5FFFFFF),
+        borderMid = Color(0x55A7C6EC),
+        borderBot = Color(0xCCFFFFFF),
+        wellBg = Color(0x2015243A),
+        dockTop = Color(0xDCF7FAFE),
+        dockBot = Color(0xE8E9EFF7),
+        dialogBg = Color(0xFFF3F6FA)
+    )
+} else {
+    GlassPalette(
+        isLight = false,
+        textPrimary = Color(0xFFF6F8FB),
+        textSecondary = Color(0xFFA7B3C4),
+        textMuted = Color(0xFF727F92),
+        accent = Color(0xFFE9EFF6),
+        iosBlue = Color(0xFF4AA3FF),
+        iosGreen = Color(0xFF32D74B),
+        panelTop = Color(0x28FFFFFF),
+        panelMid = Color(0x11FFFFFF),
+        panelBot = Color(0x1AFFFFFF),
+        borderTop = Color(0x70FFFFFF),
+        borderMid = Color(0x2692C5FF),
+        borderBot = Color(0x42FFFFFF),
+        wellBg = Color(0x8805070C),
+        dockTop = Color(0xDC1A212E),
+        dockBot = Color(0xEE0D1119),
+        dialogBg = Color(0xFF151B26)
+    )
+}
 
 @Composable
-private fun LiquidGlassBackdrop() {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFF0A0D13), Color(0xFF0E131C), Color(0xFF07090D))
+private fun LiquidGlassBackdrop(light: Boolean) {
+    val modifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                renderEffect = android.graphics.RenderEffect
+                    .createBlurEffect(28f, 28f, android.graphics.Shader.TileMode.CLAMP)
+                    .asComposeRenderEffect()
+            }
+    } else {
+        Modifier.fillMaxSize()
+    }
+    Canvas(modifier = modifier) {
+        if (light) {
+            drawRect(Brush.verticalGradient(listOf(Color(0xFFEEF3FA), Color(0xFFE3EAF4), Color(0xFFEDF1F7))))
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0x66A9D2FF), Color(0x22CBE4FF), Color.Transparent),
+                    center = Offset(size.width * 0.85f, size.height * 0.14f),
+                    radius = size.minDimension * 0.88f
+                ),
+                radius = size.minDimension * 0.88f,
+                center = Offset(size.width * 0.85f, size.height * 0.14f)
             )
-        )
-        // Pendar perak-titanium kanan atas
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color(0x36DCE6F2), Color(0x0E9BB0C9), Color.Transparent),
-                center = Offset(size.width * 0.88f, size.height * 0.12f),
-                radius = size.minDimension * 0.82f
-            ),
-            radius = size.minDimension * 0.82f,
-            center = Offset(size.width * 0.88f, size.height * 0.12f)
-        )
-        // Pendar dingin kiri bawah
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color(0x2890A8C4), Color(0x085A6C82), Color.Transparent),
-                center = Offset(size.width * 0.10f, size.height * 0.84f),
-                radius = size.minDimension * 0.78f
-            ),
-            radius = size.minDimension * 0.78f,
-            center = Offset(size.width * 0.10f, size.height * 0.84f)
-        )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0x55D4C2F8), Color(0x1AEAE4FB), Color.Transparent),
+                    center = Offset(size.width * 0.12f, size.height * 0.78f),
+                    radius = size.minDimension * 0.85f
+                ),
+                radius = size.minDimension * 0.85f,
+                center = Offset(size.width * 0.12f, size.height * 0.78f)
+            )
+        } else {
+            drawRect(Brush.verticalGradient(listOf(Color(0xFF090C12), Color(0xFF0E141F), Color(0xFF06080D))))
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0x42D5E4F7), Color(0x147AA4D6), Color.Transparent),
+                    center = Offset(size.width * 0.86f, size.height * 0.12f),
+                    radius = size.minDimension * 0.86f
+                ),
+                radius = size.minDimension * 0.86f,
+                center = Offset(size.width * 0.86f, size.height * 0.12f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0x327BA6D8), Color(0x0E4A6588), Color.Transparent),
+                    center = Offset(size.width * 0.12f, size.height * 0.82f),
+                    radius = size.minDimension * 0.82f
+                ),
+                radius = size.minDimension * 0.82f,
+                center = Offset(size.width * 0.12f, size.height * 0.82f)
+            )
+        }
     }
 }
 
 @Composable
 private fun GlassPanel(
+    pal: GlassPalette,
     modifier: Modifier = Modifier,
-    cornerRadius: Int = 24,
+    cornerRadius: Int = 26,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(cornerRadius.dp)
@@ -154,16 +249,10 @@ private fun GlassPanel(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color(0x24FFFFFF), Color(0x10FFFFFF), Color(0x16FFFFFF))
-                )
-            )
+            .background(Brush.verticalGradient(listOf(pal.panelTop, pal.panelMid, pal.panelBot)))
             .border(
                 width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(Color(0x66FFFFFF), Color(0x18FFFFFF), Color(0x3AFFFFFF))
-                ),
+                brush = Brush.linearGradient(listOf(pal.borderTop, pal.borderMid, pal.borderBot)),
                 shape = shape
             )
     ) {
@@ -178,31 +267,39 @@ private fun GlassPanel(
 @Composable
 private fun GlassPrimaryButton(
     text: String,
+    pal: GlassPalette,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val sc by animateFloatAsState(if (pressed) 0.96f else 1f, spring(0.65f, 520f), label = "btn_sc")
     val shape = RoundedCornerShape(50)
-    val bg = if (enabled) {
-        Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFD9E0E8)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x22FFFFFF)))
+    val bg = when {
+        !enabled -> Brush.verticalGradient(listOf(Color(0x30888888), Color(0x20888888)))
+        pal.isLight -> Brush.verticalGradient(listOf(Color(0xFF1F2733), Color(0xFF0C1016)))
+        else -> Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFD6DEE8)))
     }
     Box(
         modifier = modifier
             .height(46.dp)
+            .scale(sc)
             .clip(shape)
             .background(bg)
-            .border(1.dp, Color(0x88FFFFFF), shape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .border(1.dp, if (pal.isLight) Color(0x44FFFFFF) else Color(0xAAFFFFFF), shape)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            color = if (enabled) Color(0xFF0C1016) else Color(0x77FFFFFF),
+            color = when {
+                !enabled -> pal.textMuted
+                pal.isLight -> Color.White
+                else -> Color(0xFF0B0F15)
+            },
             fontWeight = FontWeight.SemiBold,
-            fontSize = 13.sp,
-            letterSpacing = 0.2.sp
+            fontSize = 13.sp
         )
     }
 }
@@ -210,31 +307,28 @@ private fun GlassPrimaryButton(
 @Composable
 private fun GlassSecondaryButton(
     text: String,
+    pal: GlassPalette,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val sc by animateFloatAsState(if (pressed) 0.96f else 1f, spring(0.65f, 520f), label = "sec_sc")
     val shape = RoundedCornerShape(50)
     Box(
         modifier = modifier
             .height(44.dp)
+            .scale(sc)
             .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0x28FFFFFF), Color(0x12FFFFFF), Color(0x1AFFFFFF))
-                )
-            )
-            .border(
-                1.dp,
-                Brush.linearGradient(listOf(Color(0x55FFFFFF), Color(0x18FFFFFF), Color(0x38FFFFFF))),
-                shape
-            )
-            .clickable(enabled = enabled, onClick = onClick),
+            .background(Brush.verticalGradient(listOf(pal.panelTop, pal.panelMid, pal.panelBot)))
+            .border(1.dp, Brush.linearGradient(listOf(pal.borderTop, pal.borderMid, pal.borderBot)), shape)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            color = if (enabled) GlassTextPrimary else GlassTextMuted,
+            color = if (enabled) pal.textPrimary else pal.textMuted,
             fontWeight = FontWeight.Medium,
             fontSize = 12.sp
         )
@@ -242,64 +336,252 @@ private fun GlassSecondaryButton(
 }
 
 @Composable
-private fun GlassMiniPill(label: String, onClick: () -> Unit) {
+private fun GlassMiniPill(label: String, pal: GlassPalette, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     Box(
         modifier = Modifier
             .clip(shape)
-            .background(Color(0x22FFFFFF))
-            .border(1.dp, Color(0x3CFFFFFF), shape)
+            .background(if (pal.isLight) Color(0xBBFFFFFF) else Color(0x24FFFFFF))
+            .border(1.dp, if (pal.isLight) Color(0xEEFFFFFF) else Color(0x42FFFFFF), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = GlassTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(label, color = pal.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
-/** iOS Liquid Glass Segmented Control dengan pil cermin meluncur halus */
+/** iOS 26 Liquid Glass Toggle Switch — berubah jadi kapsul kaca bening memanjang saat ditekan */
+@Composable
+private fun LiquidGlassSwitch(
+    checked: Boolean,
+    pal: GlassPalette,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+    var pressed by remember { mutableStateOf(false) }
+    val trackCol by animateColorAsState(
+        targetValue = if (checked) pal.iosGreen else (if (pal.isLight) Color(0x30101828) else Color(0x32FFFFFF)),
+        animationSpec = tween(220),
+        label = "sw_track"
+    )
+    val thumbOffset by animateDpAsState(
+        targetValue = if (checked) 24.dp else 2.dp,
+        animationSpec = spring(dampingRatio = 0.68f, stiffness = 460f),
+        label = "sw_pos"
+    )
+    val thumbW by animateDpAsState(
+        targetValue = if (pressed) 34.dp else 28.dp,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = 520f),
+        label = "sw_w"
+    )
+    val thumbH by animateDpAsState(
+        targetValue = if (pressed) 28.dp else 24.dp,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = 520f),
+        label = "sw_h"
+    )
+    val shape = RoundedCornerShape(50)
+
+    Box(
+        modifier = Modifier
+            .width(56.dp)
+            .height(30.dp)
+            .clip(shape)
+            .background(trackCol)
+            .border(1.dp, if (checked) Color(0x66FFFFFF) else pal.borderMid, shape)
+            .pointerInput(checked) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    },
+                    onTap = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onCheckedChange(!checked)
+                    }
+                )
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        val adjX = if (pressed && checked) (thumbOffset - 6.dp).coerceAtLeast(2.dp) else thumbOffset
+        Box(
+            modifier = Modifier
+                .offset(x = adjX)
+                .width(thumbW)
+                .height(thumbH)
+                .clip(shape)
+                .background(
+                    if (pressed) {
+                        Brush.verticalGradient(listOf(Color(0x99FFFFFF), Color(0x40FFFFFF), Color(0x78FFFFFF)))
+                    } else {
+                        Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFE8EEF5)))
+                    }
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(listOf(Color(0xEEFFFFFF), Color(0x55A4D4FF), Color(0xBBFFFFFF))),
+                    shape = shape
+                )
+        )
+    }
+}
+
+/** iOS 26 Liquid Glass Capsule Slider — thumb kaca lonjong membesar & membiaskan track */
+@Composable
+private fun LiquidGlassSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    pal: GlassPalette,
+    modifier: Modifier = Modifier
+) {
+    val latestOnChange by rememberUpdatedState(onValueChange)
+    val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.0001f)
+    val frac = ((value - valueRange.start) / span).coerceIn(0f, 1f)
+    var dragging by remember { mutableStateOf(false) }
+
+    val thumbW by animateDpAsState(if (dragging) 38.dp else 30.dp, spring(0.65f, 460f), label = "sl_w")
+    val thumbH by animateDpAsState(if (dragging) 24.dp else 20.dp, spring(0.65f, 460f), label = "sl_h")
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(34.dp)
+            .pointerInput(valueRange) {
+                detectTapGestures { pos ->
+                    val u = (pos.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                    latestOnChange(valueRange.start + u * span)
+                }
+            }
+            .pointerInput(valueRange) {
+                detectHorizontalDragGestures(
+                    onDragStart = { pos ->
+                        dragging = true
+                        val u = (pos.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                        latestOnChange(valueRange.start + u * span)
+                    },
+                    onDragEnd = { dragging = false },
+                    onDragCancel = { dragging = false },
+                    onHorizontalDrag = { change, _ ->
+                        change.consume()
+                        val u = (change.position.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                        latestOnChange(valueRange.start + u * span)
+                    }
+                )
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        val trackShape = RoundedCornerShape(50)
+        // Track belakang
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(trackShape)
+                .background(if (pal.isLight) Color(0x28101828) else Color(0x2EFFFFFF))
+        )
+        // Track terisi
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(frac.coerceAtLeast(0.02f))
+                .height(6.dp)
+                .clip(trackShape)
+                .background(if (pal.isLight) pal.iosBlue else Color.White)
+        )
+        // Liquid Glass Capsule Thumb
+        val travel = (maxWidth - thumbW).coerceAtLeast(0.dp)
+        val xPos = travel * frac
+        Box(
+            modifier = Modifier
+                .offset(x = xPos)
+                .width(thumbW)
+                .height(thumbH)
+                .clip(trackShape)
+                .background(
+                    if (dragging) {
+                        Brush.verticalGradient(listOf(Color(0x90FFFFFF), Color(0x36FFFFFF), Color(0x70FFFFFF)))
+                    } else {
+                        Brush.verticalGradient(listOf(Color(0xF5FFFFFF), Color(0xD8E7EEF7)))
+                    }
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(listOf(Color(0xFFFFFFFF), Color(0x6692CCFF), Color(0xCCFFFFFF))),
+                    shape = trackShape
+                )
+        )
+    }
+}
+
+/** iOS 26 Segmented Control dengan Drag-to-Scrub + Mirror Pill */
 @Composable
 private fun GlassSegmentBar(
     title: String,
     options: List<String>,
     selected: String,
+    pal: GlassPalette,
     onSelect: (String) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+    val latestSelect by rememberUpdatedState(onSelect)
     val selectedIdx = options.indexOf(selected).coerceAtLeast(0)
+    var dragging by remember { mutableStateOf(false) }
+
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text(title, color = GlassTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(title, color = pal.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         val trackShape = RoundedCornerShape(50)
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(40.dp)
                 .clip(trackShape)
-                .background(Color(0x4506080C))
-                .border(1.dp, Color(0x28FFFFFF), trackShape)
+                .background(pal.wellBg)
+                .border(1.dp, pal.borderMid, trackShape)
                 .padding(3.dp)
+                .pointerInput(options) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { dragging = true },
+                        onDragEnd = { dragging = false },
+                        onDragCancel = { dragging = false },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            val idx = ((change.position.x / size.width.coerceAtLeast(1)) * options.size)
+                                .toInt().coerceIn(0, options.lastIndex)
+                            if (options[idx] != selected) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                latestSelect(options[idx])
+                            }
+                        }
+                    )
+                }
         ) {
             val itemW = maxWidth / options.size.coerceAtLeast(1)
             val indicatorX by animateDpAsState(
                 targetValue = itemW * selectedIdx,
-                animationSpec = spring(dampingRatio = 0.74f, stiffness = 420f),
-                label = "seg_mirror"
+                animationSpec = spring(dampingRatio = 0.72f, stiffness = 430f),
+                label = "seg_x"
             )
+            val lensScale by animateFloatAsState(if (dragging) 1.04f else 1f, spring(0.6f, 420f), label = "seg_sc")
             val pillShape = RoundedCornerShape(50)
-            // Pil cermin reflektif yang meluncur
+
             Box(
                 modifier = Modifier
                     .offset(x = indicatorX)
                     .width(itemW)
                     .fillMaxHeight()
+                    .scale(lensScale)
                     .clip(pillShape)
                     .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color(0x62FFFFFF), Color(0x26FFFFFF), Color(0x42FFFFFF))
-                        )
+                        if (pal.isLight) {
+                            Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xEBEDF2F8)))
+                        } else {
+                            Brush.verticalGradient(listOf(Color(0x64FFFFFF), Color(0x28FFFFFF), Color(0x46FFFFFF)))
+                        }
                     )
                     .border(
                         1.dp,
-                        Brush.linearGradient(listOf(Color(0xAAFFFFFF), Color(0x22FFFFFF), Color(0x66FFFFFF))),
+                        Brush.linearGradient(listOf(Color(0xDDFFFFFF), Color(0x4891C8FF), Color(0x99FFFFFF))),
                         pillShape
                     )
             )
@@ -313,13 +595,16 @@ private fun GlassSegmentBar(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                onClick = { onSelect(opt) }
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onSelect(opt)
+                                }
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = opt,
-                            color = if (isSel) Color.White else GlassTextSecondary,
+                            color = if (isSel) pal.textPrimary else pal.textSecondary,
                             fontSize = 11.sp,
                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                             maxLines = 1,
@@ -332,7 +617,7 @@ private fun GlassSegmentBar(
     }
 }
 
-/** Logo Apple Perak-Putih Khas + Play-Code untuk Header */
+/** Logo Apple Perak-Putih Khas + Play-Code */
 @Composable
 private fun AppBrandLogo(modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(12.dp)
@@ -340,16 +625,13 @@ private fun AppBrandLogo(modifier: Modifier = Modifier) {
         modifier = modifier
             .size(38.dp)
             .clip(shape)
-            .background(
-                Brush.linearGradient(listOf(Color(0xFFECEFF3), Color(0xFFA7B0BA), Color(0xFF4F5762)))
-            )
-            .border(1.dp, Color(0xAAFFFFFF), shape),
+            .background(Brush.linearGradient(listOf(Color(0xFFECEFF3), Color(0xFFA7B0BA), Color(0xFF4F5762))))
+            .border(1.dp, Color(0xBBFFFFFF), shape),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.size(26.dp)) {
             val w = size.width
             val h = size.height
-            // Daun apel
             val leaf = Path().apply {
                 moveTo(w * 0.52f, h * 0.24f)
                 cubicTo(w * 0.51f, h * 0.12f, w * 0.62f, h * 0.04f, w * 0.72f, h * 0.04f)
@@ -357,7 +639,6 @@ private fun AppBrandLogo(modifier: Modifier = Modifier) {
                 close()
             }
             drawPath(leaf, color = Color.White)
-            // Siluet apel putih-perak
             val apple = Path().apply {
                 moveTo(w * 0.76f, h * 0.55f)
                 cubicTo(w * 0.76f, h * 0.44f, w * 0.85f, h * 0.39f, w * 0.86f, h * 0.38f)
@@ -374,48 +655,39 @@ private fun AppBrandLogo(modifier: Modifier = Modifier) {
                 cubicTo(w * 0.90f, h * 0.73f, w * 0.76f, h * 0.68f, w * 0.76f, h * 0.55f)
                 close()
             }
-            drawPath(
-                apple,
-                brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFD5DCE4)))
-            )
-            // Ikon play mini di dalam apel
+            drawPath(apple, brush = Brush.verticalGradient(listOf(Color.White, Color(0xFFD5DCE4))))
             val play = Path().apply {
-                moveTo(w * 0.45f, h * 0.54f)
-                lineTo(w * 0.61f, h * 0.63f)
-                lineTo(w * 0.45f, h * 0.72f)
-                close()
+                moveTo(w * 0.45f, h * 0.54f); lineTo(w * 0.61f, h * 0.63f); lineTo(w * 0.45f, h * 0.72f); close()
             }
             drawPath(play, color = Color(0xFF47505C))
         }
     }
 }
 
-/** Ikon vektor tipis ala iOS SF Symbols tanpa library tambahan */
 @Composable
-private fun IosTabIcon(tab: StudioTab, active: Boolean) {
-    val tint = if (active) Color.White else GlassTextSecondary
-    Canvas(modifier = Modifier.size(20.dp)) {
+private fun IosTabIcon(tab: StudioTab, active: Boolean, pal: GlassPalette) {
+    val tint = if (active) (if (pal.isLight) pal.iosBlue else Color.White) else pal.textSecondary
+    val iconScale by animateFloatAsState(
+        targetValue = if (active) 1.12f else 0.96f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 420f),
+        label = "ic_sc"
+    )
+    Canvas(modifier = Modifier.size(20.dp).scale(iconScale)) {
         val w = size.width
         val h = size.height
-        val sw = if (active) 2.1.dp.toPx() else 1.7.dp.toPx()
+        val sw = if (active) 2.15.dp.toPx() else 1.65.dp.toPx()
         val stroke = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
         when (tab) {
             StudioTab.EDITOR -> {
-                val left = Path().apply {
-                    moveTo(w * 0.36f, h * 0.24f); lineTo(w * 0.14f, h * 0.50f); lineTo(w * 0.36f, h * 0.76f)
-                }
-                val right = Path().apply {
-                    moveTo(w * 0.64f, h * 0.24f); lineTo(w * 0.86f, h * 0.50f); lineTo(w * 0.64f, h * 0.76f)
-                }
+                val left = Path().apply { moveTo(w * 0.36f, h * 0.24f); lineTo(w * 0.14f, h * 0.50f); lineTo(w * 0.36f, h * 0.76f) }
+                val right = Path().apply { moveTo(w * 0.64f, h * 0.24f); lineTo(w * 0.86f, h * 0.50f); lineTo(w * 0.64f, h * 0.76f) }
                 drawPath(left, tint, style = stroke)
                 drawPath(right, tint, style = stroke)
                 drawLine(tint, Offset(w * 0.56f, h * 0.20f), Offset(w * 0.44f, h * 0.80f), strokeWidth = sw, cap = StrokeCap.Round)
             }
             StudioTab.RENDER -> {
                 drawCircle(tint, radius = w * 0.42f, style = stroke)
-                val tri = Path().apply {
-                    moveTo(w * 0.42f, h * 0.34f); lineTo(w * 0.68f, h * 0.50f); lineTo(w * 0.42f, h * 0.66f); close()
-                }
+                val tri = Path().apply { moveTo(w * 0.42f, h * 0.34f); lineTo(w * 0.68f, h * 0.50f); lineTo(w * 0.42f, h * 0.66f); close() }
                 drawPath(tri, tint)
             }
             StudioTab.GALLERY -> {
@@ -430,13 +702,8 @@ private fun IosTabIcon(tab: StudioTab, active: Boolean) {
             }
             StudioTab.PROJECTS -> {
                 val folder = Path().apply {
-                    moveTo(w * 0.12f, h * 0.26f)
-                    lineTo(w * 0.40f, h * 0.26f)
-                    lineTo(w * 0.50f, h * 0.36f)
-                    lineTo(w * 0.88f, h * 0.36f)
-                    lineTo(w * 0.88f, h * 0.78f)
-                    lineTo(w * 0.12f, h * 0.78f)
-                    close()
+                    moveTo(w * 0.12f, h * 0.26f); lineTo(w * 0.40f, h * 0.26f); lineTo(w * 0.50f, h * 0.36f)
+                    lineTo(w * 0.88f, h * 0.36f); lineTo(w * 0.88f, h * 0.78f); lineTo(w * 0.12f, h * 0.78f); close()
                 }
                 drawPath(folder, tint, style = stroke)
             }
@@ -451,100 +718,212 @@ private fun IosTabIcon(tab: StudioTab, active: Boolean) {
     }
 }
 
-/** Floating Mirror Liquid Glass Bottom Bar ala iOS 26 */
+/**
+ * Floating iOS 26 Liquid Glass Dock dengan Drag-to-Scrub, Elastic Jelly Stretch,
+ * Chromatic Specular Lens + Detached Floating Orb di sisi kanan!
+ */
 @Composable
-private fun LiquidGlassMirrorNavBar(
+private fun FloatingLiquidGlassDockRow(
     selectedTab: StudioTab,
-    onSelect: (StudioTab) -> Unit
+    pal: GlassPalette,
+    onSelect: (StudioTab) -> Unit,
+    onOrbClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val tabs = StudioTab.entries
     val selectedIdx = tabs.indexOf(selectedTab).coerceAtLeast(0)
-    val dockShape = RoundedCornerShape(32.dp)
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val latestSelect by rememberUpdatedState(onSelect)
 
-    Box(
-        modifier = Modifier
+    var isDragging by remember { mutableStateOf(false) }
+    var dragFrac by remember { mutableFloatStateOf(selectedIdx.toFloat()) }
+    var dragVel by remember { mutableFloatStateOf(0f) }
+
+    val animatedFrac by animateFloatAsState(
+        targetValue = if (isDragging) dragFrac else selectedIdx.toFloat(),
+        animationSpec = if (isDragging) spring(0.85f, 900f) else spring(0.64f, 350f),
+        label = "dock_frac"
+    )
+    val lensInflate by animateFloatAsState(
+        targetValue = if (isDragging) 1.12f else 1.0f,
+        animationSpec = spring(0.58f, 400f),
+        label = "dock_inflate"
+    )
+    val stretchX by animateFloatAsState(
+        targetValue = if (isDragging) (1f + (abs(dragVel) * 0.008f).coerceAtMost(0.16f)) else 1f,
+        animationSpec = spring(0.62f, 460f),
+        label = "dock_stretch"
+    )
+
+    val dockShape = RoundedCornerShape(34.dp)
+
+    Row(
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        // KAPSUL DOCK UTAMA (5 TAB + DRAG TO SCRUB)
         BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .height(64.dp)
                 .clip(dockShape)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0xD6181F2A), Color(0xE80D1118))
-                    )
-                )
+                .background(Brush.verticalGradient(listOf(pal.dockTop, pal.dockBot)))
                 .border(
                     width = 1.dp,
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0x70FFFFFF), Color(0x1AFFFFFF), Color(0x48FFFFFF))
-                    ),
+                    brush = Brush.linearGradient(listOf(pal.borderTop, pal.borderMid, pal.borderBot)),
                     shape = dockShape
                 )
                 .padding(5.dp)
+                .pointerInput(tabs.size) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { pos ->
+                            isDragging = true
+                            val raw = ((pos.x / size.width.coerceAtLeast(1)) * tabs.size - 0.5f)
+                                .coerceIn(0f, (tabs.size - 1).toFloat())
+                            dragFrac = raw
+                            val nearest = raw.roundToInt().coerceIn(0, tabs.lastIndex)
+                            if (tabs[nearest] != selectedTab) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                latestSelect(tabs[nearest])
+                            }
+                        },
+                        onDragEnd = {
+                            isDragging = false
+                            dragVel = 0f
+                            val nearest = dragFrac.roundToInt().coerceIn(0, tabs.lastIndex)
+                            latestSelect(tabs[nearest])
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                            dragVel = 0f
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            dragVel = dragAmount
+                            val raw = ((change.position.x / size.width.coerceAtLeast(1)) * tabs.size - 0.5f)
+                                .coerceIn(0f, (tabs.size - 1).toFloat())
+                            dragFrac = raw
+                            val nearest = raw.roundToInt().coerceIn(0, tabs.lastIndex)
+                            if (tabs[nearest] != selectedTab) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                latestSelect(tabs[nearest])
+                            }
+                        }
+                    )
+                }
         ) {
             val tabWidth = maxWidth / tabs.size
-            val mirrorX by animateDpAsState(
-                targetValue = tabWidth * selectedIdx,
-                animationSpec = spring(dampingRatio = 0.70f, stiffness = 360f),
-                label = "nav_mirror_pill"
-            )
-            val pillShape = RoundedCornerShape(26.dp)
+            val xOffsetDp = with(density) { (tabWidth.toPx() * animatedFrac).toDp() }
+            val pillShape = RoundedCornerShape(28.dp)
 
-            // Lensa cermin Liquid Glass yang meluncur lembut ke tab aktif
+            // Lensa Liquid Glass Cair yang meluncur, membesar & melar saat digeser
             Box(
                 modifier = Modifier
-                    .offset(x = mirrorX)
+                    .offset(x = xOffsetDp)
                     .width(tabWidth)
                     .fillMaxHeight()
+                    .graphicsLayer {
+                        scaleX = lensInflate * stretchX
+                        scaleY = lensInflate / (1f + (stretchX - 1f) * 0.45f)
+                    }
                     .clip(pillShape)
                     .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color(0x52FFFFFF), Color(0x1CFFFFFF), Color(0x38FFFFFF))
-                        )
+                        if (pal.isLight) {
+                            Brush.verticalGradient(listOf(Color(0xF5FFFFFF), Color(0xB8F0F6FD), Color(0xE8FFFFFF)))
+                        } else {
+                            Brush.verticalGradient(listOf(Color(0x66FFFFFF), Color(0x20FFFFFF), Color(0x46FFFFFF)))
+                        }
                     )
                     .border(
-                        width = 1.dp,
+                        width = if (isDragging) 1.5.dp else 1.dp,
                         brush = Brush.linearGradient(
-                            colors = listOf(Color(0xCCFFFFFF), Color(0x28FFFFFF), Color(0x80FFFFFF))
+                            listOf(Color(0xF0FFFFFF), Color(0x7882C6FF), Color(0x44FFB8DC), Color(0xBBFFFFFF))
                         ),
                         shape = pillShape
                     )
             )
 
             Row(modifier = Modifier.fillMaxSize()) {
-                tabs.forEach { tab ->
-                    val isActive = tab == selectedTab
-                    val scaleVal by animateFloatAsState(
-                        targetValue = if (isActive) 1.04f else 0.96f,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                        label = "tab_scale"
-                    )
+                tabs.forEachIndexed { idx, tab ->
+                    val dist = abs(animatedFrac - idx)
+                    val isNear = dist < 0.5f
+                    val magScale = if (isDragging && isNear) 1.12f else if (tab == selectedTab) 1.03f else 0.95f
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .scale(scaleVal)
+                            .scale(magScale)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                onClick = { onSelect(tab) }
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onSelect(tab)
+                                }
                             ),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        IosTabIcon(tab = tab, active = isActive)
-                        Spacer(Modifier.height(3.dp))
+                        IosTabIcon(tab = tab, active = isNear, pal = pal)
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             text = tab.label,
-                            color = if (isActive) Color.White else GlassTextSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isNear) (if (pal.isLight) pal.iosBlue else Color.White) else pal.textSecondary,
+                            fontSize = 9.5.sp,
+                            fontWeight = if (isNear) FontWeight.SemiBold else FontWeight.Normal,
                             maxLines = 1
                         )
                     }
+                }
+            }
+        }
+
+        // DETACHED FLOATING LIQUID GLASS ORB (Kanan Dock — Quick Render / Refresh!)
+        val orbInteraction = remember { MutableInteractionSource() }
+        val orbPressed by orbInteraction.collectIsPressedAsState()
+        val orbScale by animateFloatAsState(if (orbPressed) 0.88f else 1f, spring(0.55f, 480f), label = "orb_sc")
+
+        Box(
+            modifier = Modifier
+                .size(58.dp)
+                .scale(orbScale)
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(pal.dockTop, pal.dockBot)))
+                .border(
+                    width = 1.2.dp,
+                    brush = Brush.linearGradient(listOf(Color(0xEEFFFFFF), Color(0x668CC6FF), Color(0x99FFFFFF))),
+                    shape = CircleShape
+                )
+                .clickable(interactionSource = orbInteraction, indication = null) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onOrbClick()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.size(22.dp)) {
+                val w = size.width
+                val h = size.height
+                val tint = if (pal.isLight) pal.iosBlue else Color.White
+                if (selectedTab == StudioTab.RENDER) {
+                    // Ikon refresh melingkar saat sudah di tab Render
+                    drawArc(
+                        color = tint, startAngle = -60f, sweepAngle = 290f, useCenter = false,
+                        style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    val tip = Path().apply {
+                        moveTo(w * 0.78f, h * 0.14f); lineTo(w * 0.92f, h * 0.34f); lineTo(w * 0.66f, h * 0.34f); close()
+                    }
+                    drawPath(tip, tint)
+                } else {
+                    // Ikon play-spark untuk lompat cepat ke Render Studio
+                    val tri = Path().apply {
+                        moveTo(w * 0.30f, h * 0.18f); lineTo(w * 0.84f, h * 0.50f); lineTo(w * 0.30f, h * 0.82f); close()
+                    }
+                    drawPath(tri, tint)
                 }
             }
         }
@@ -559,6 +938,7 @@ fun StudioApp(activity: MainActivity) {
     val repository = activity.projects
     var project by remember { mutableStateOf(repository.loadOrCreate()) }
     var selectedTab by remember { mutableStateOf(StudioTab.EDITOR) }
+    var isLightGlass by remember { mutableStateOf(false) }
     var savedLabel by remember { mutableStateOf("Tersimpan") }
     var renderReady by remember { mutableStateOf(false) }
     var exportSupported by remember { mutableStateOf(false) }
@@ -568,6 +948,9 @@ fun StudioApp(activity: MainActivity) {
     var renderMessage by remember { mutableStateOf("") }
     var refreshProjects by remember { mutableIntStateOf(0) }
     var refreshGallery by remember { mutableIntStateOf(0) }
+    var previewTick by remember { mutableIntStateOf(0) }
+
+    val pal = remember(isLightGlass) { glassPalette(isLightGlass) }
 
     LaunchedEffect(project.projectId, project.name, project.sourceBody, project.propsValues, project.renderSettings) {
         delay(650)
@@ -604,155 +987,208 @@ fun StudioApp(activity: MainActivity) {
                 activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> input.copyTo(output) }
                     ?: throw IllegalStateException("File tujuan tidak bisa dibuka.")
             }
-        }.onSuccess { Toast.makeText(activity, "Dokumentasi v0.3 disimpan", Toast.LENGTH_SHORT).show() }
+        }.onSuccess { Toast.makeText(activity, "Dokumentasi v0.4 disimpan", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(activity, it.message ?: "Gagal menyimpan Docs", Toast.LENGTH_LONG).show() }
     }
 
+    // OVERLAY LAYOUT: Konten bergulir penuh melewati BELAKANG Floating Liquid Glass Dock!
     Box(modifier = Modifier.fillMaxSize()) {
-        LiquidGlassBackdrop()
-        Column(
+        LiquidGlassBackdrop(light = isLightGlass)
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
         ) {
-            TopGlassHeader(project.name, savedLabel, renderReady)
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                AnimatedContent(
-                    targetState = selectedTab,
-                    transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
-                    label = "tab_content"
-                ) { tab ->
-                    when (tab) {
-                        StudioTab.EDITOR -> EditorScreen(
-                            project = project,
-                            onProjectChange = { project = it },
-                            onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
-                            onExport = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
-                        )
-                        StudioTab.RENDER -> RenderScreen(
-                            project = project,
-                            onProjectChange = { project = it },
-                            runtime = activity.canvasRuntime,
-                            ready = renderReady,
-                            exportSupported = exportSupported,
-                            isRendering = isRendering,
-                            renderDone = renderDone,
-                            renderTotal = renderTotal,
-                            renderMessage = renderMessage,
-                            onPreview = { activity.canvasRuntime.preview(project, it) },
-                            onRender = {
-                                renderMessage = "Mensintesis audio SFX & menyiapkan encoder MP4…"
-                                isRendering = true
-                                renderDone = 0
-                                activity.renderController.render(
-                                    project,
-                                    onProgress = { done, total ->
-                                        renderDone = done
-                                        renderTotal = total
-                                        renderMessage = "Merender frame $done dari $total"
-                                    },
-                                    onComplete = { result ->
-                                        isRendering = false
-                                        result.onSuccess {
-                                            renderMessage = "MP4 selesai divalidasi dan disimpan ke Movies/CodeToVideoStudio"
-                                            refreshGallery++
-                                            Toast.makeText(activity, "Video tersimpan di Galeri", Toast.LENGTH_LONG).show()
-                                        }.onFailure { error ->
-                                            renderMessage = error.message?.takeIf { it.isNotBlank() } ?: "${error::class.java.simpleName}: Render gagal."
-                                            Toast.makeText(activity, renderMessage, Toast.LENGTH_LONG).show()
+            Column(modifier = Modifier.fillMaxSize()) {
+                TopGlassHeader(
+                    projectName = project.name,
+                    status = savedLabel,
+                    webReady = renderReady,
+                    pal = pal,
+                    onToggleTheme = { isLightGlass = !isLightGlass }
+                )
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) },
+                        label = "tab_content"
+                    ) { tab ->
+                        when (tab) {
+                            StudioTab.EDITOR -> EditorScreen(
+                                project = project,
+                                pal = pal,
+                                onProjectChange = { project = it },
+                                onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
+                                onExport = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
+                            )
+                            StudioTab.RENDER -> RenderScreen(
+                                project = project,
+                                pal = pal,
+                                onProjectChange = { project = it },
+                                runtime = activity.canvasRuntime,
+                                ready = renderReady,
+                                exportSupported = exportSupported,
+                                isRendering = isRendering,
+                                renderDone = renderDone,
+                                renderTotal = renderTotal,
+                                renderMessage = renderMessage,
+                                externalRefreshTick = previewTick,
+                                onPreview = { activity.canvasRuntime.preview(project, it) },
+                                onRender = {
+                                    renderMessage = "Mensintesis audio 26 SFX & menyiapkan encoder MP4…"
+                                    isRendering = true
+                                    renderDone = 0
+                                    activity.renderController.render(
+                                        project,
+                                        onProgress = { done, total ->
+                                            renderDone = done
+                                            renderTotal = total
+                                            renderMessage = "Merender frame $done dari $total"
+                                        },
+                                        onComplete = { result ->
+                                            isRendering = false
+                                            result.onSuccess {
+                                                renderMessage = "MP4 selesai divalidasi & disimpan ke Movies/CodeToVideoStudio"
+                                                refreshGallery++
+                                                Toast.makeText(activity, "Video tersimpan di Galeri", Toast.LENGTH_LONG).show()
+                                            }.onFailure { error ->
+                                                renderMessage = error.message?.takeIf { it.isNotBlank() } ?: "${error::class.java.simpleName}: Render gagal."
+                                                Toast.makeText(activity, renderMessage, Toast.LENGTH_LONG).show()
+                                            }
                                         }
+                                    )
+                                },
+                                onCancel = { activity.renderController.cancel(); renderMessage = "Permintaan pembatalan dikirim." }
+                            )
+                            StudioTab.GALLERY -> GalleryScreen(
+                                activity = activity,
+                                pal = pal,
+                                keyRefresh = refreshGallery,
+                                onShare = { video ->
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "video/mp4"
+                                        putExtra(Intent.EXTRA_STREAM, video.uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
-                                )
-                            },
-                            onCancel = { activity.renderController.cancel(); renderMessage = "Permintaan pembatalan dikirim." }
-                        )
-                        StudioTab.GALLERY -> GalleryScreen(
-                            activity = activity,
-                            keyRefresh = refreshGallery,
-                            onShare = { video ->
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "video/mp4"
-                                    putExtra(Intent.EXTRA_STREAM, video.uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    activity.startActivity(Intent.createChooser(intent, "Bagikan video"))
+                                },
+                                onDelete = { video ->
+                                    runCatching { GalleryRepository(activity).delete(video.uri); refreshGallery++ }
+                                        .onFailure { Toast.makeText(activity, it.message ?: "Hapus gagal", Toast.LENGTH_LONG).show() }
                                 }
-                                activity.startActivity(Intent.createChooser(intent, "Bagikan video"))
-                            },
-                            onDelete = { video ->
-                                runCatching { GalleryRepository(activity).delete(video.uri); refreshGallery++ }
-                                    .onFailure { Toast.makeText(activity, it.message ?: "Hapus gagal", Toast.LENGTH_LONG).show() }
-                            }
-                        )
-                        StudioTab.PROJECTS -> ProjectsScreen(
-                            activity = activity,
-                            keyRefresh = refreshProjects,
-                            currentProjectId = project.projectId,
-                            onOpen = { opened -> project = opened; selectedTab = StudioTab.EDITOR },
-                            onNew = { project = repository.save(StudioProject(name = "New Glass Motion")); selectedTab = StudioTab.EDITOR },
-                            onDuplicate = { item -> repository.duplicate(item); refreshProjects++ },
-                            onRename = { item, name ->
-                                val updated = repository.save(item.copy(name = name.take(80)))
-                                if (item.projectId == project.projectId) project = updated
-                                refreshProjects++
-                            },
-                            onDelete = { item ->
-                                repository.delete(item.projectId)
-                                if (item.projectId == project.projectId) project = repository.loadOrCreate()
-                                refreshProjects++
-                            },
-                            onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
-                            onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
-                        )
-                        StudioTab.DOCS -> DocsScreen(activity = activity, onSave = { saveDocs.launch("render-video-code-skill-v0.3.md") })
+                            )
+                            StudioTab.PROJECTS -> ProjectsScreen(
+                                activity = activity,
+                                pal = pal,
+                                keyRefresh = refreshProjects,
+                                currentProjectId = project.projectId,
+                                onOpen = { opened -> project = opened; selectedTab = StudioTab.EDITOR },
+                                onNew = { project = repository.save(StudioProject(name = "New Liquid Motion")); selectedTab = StudioTab.EDITOR },
+                                onDuplicate = { item -> repository.duplicate(item); refreshProjects++ },
+                                onRename = { item, name ->
+                                    val updated = repository.save(item.copy(name = name.take(80)))
+                                    if (item.projectId == project.projectId) project = updated
+                                    refreshProjects++
+                                },
+                                onDelete = { item ->
+                                    repository.delete(item.projectId)
+                                    if (item.projectId == project.projectId) project = repository.loadOrCreate()
+                                    refreshProjects++
+                                },
+                                onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
+                                onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
+                            )
+                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v0.4.md") })
+                        }
                     }
                 }
             }
-            LiquidGlassMirrorNavBar(selectedTab = selectedTab, onSelect = { selectedTab = it })
+
+            // Floating Dock & Detached Orb mengambang di atas konten!
+            FloatingLiquidGlassDockRow(
+                selectedTab = selectedTab,
+                pal = pal,
+                onSelect = { selectedTab = it },
+                onOrbClick = {
+                    if (selectedTab != StudioTab.RENDER) {
+                        selectedTab = StudioTab.RENDER
+                    } else {
+                        previewTick++
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 }
 
 @Composable
-private fun TopGlassHeader(projectName: String, status: String, webReady: Boolean) {
+private fun TopGlassHeader(
+    projectName: String,
+    status: String,
+    webReady: Boolean,
+    pal: GlassPalette,
+    onToggleTheme: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AppBrandLogo()
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = "Render Video Code",
-                color = GlassTextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                letterSpacing = (-0.2).sp
-            )
-            Text(
-                text = projectName,
-                color = GlassTextSecondary,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Text("Render Video Code", color = pal.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp, letterSpacing = (-0.2).sp)
+            Text(projectName, color = pal.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        // Tombol Bulat Ganti Tema Dark / Light Liquid Glass
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(pal.panelTop, pal.panelBot)))
+                .border(1.dp, pal.borderTop, CircleShape)
+                .clickable(onClick = onToggleTheme),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.size(16.dp)) {
+                val c = pal.textPrimary
+                if (pal.isLight) {
+                    // Bulan sabit (klik untuk Dark Glass)
+                    drawCircle(c, radius = size.minDimension * 0.40f)
+                    drawCircle(pal.panelTop, radius = size.minDimension * 0.32f, center = Offset(size.width * 0.66f, size.height * 0.34f))
+                } else {
+                    // Matahari (klik untuk Light Glass)
+                    drawCircle(c, radius = size.minDimension * 0.24f)
+                    for (i in 0 until 8) {
+                        val a = i * (Math.PI / 4.0)
+                        val sx = center.x + (kotlin.math.cos(a) * size.minDimension * 0.34f).toFloat()
+                        val sy = center.y + (kotlin.math.sin(a) * size.minDimension * 0.34f).toFloat()
+                        val ex = center.x + (kotlin.math.cos(a) * size.minDimension * 0.46f).toFloat()
+                        val ey = center.y + (kotlin.math.sin(a) * size.minDimension * 0.46f).toFloat()
+                        drawLine(c, Offset(sx, sy), Offset(ex, ey), strokeWidth = 1.6.dp.toPx(), cap = StrokeCap.Round)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.width(8.dp))
         val pillShape = RoundedCornerShape(50)
         Column(horizontalAlignment = Alignment.End) {
             Row(
                 modifier = Modifier
                     .clip(pillShape)
-                    .background(Color(0x1EFFFFFF))
-                    .border(1.dp, Color(0x36FFFFFF), pillShape)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .background(Brush.verticalGradient(listOf(pal.panelTop, pal.panelBot)))
+                    .border(1.dp, pal.borderMid, pillShape)
+                    .padding(horizontal = 9.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.size(6.dp).background(if (webReady) GlassMintDot else Color(0xFFFFC966), CircleShape))
-                Spacer(Modifier.width(6.dp))
-                Text("v0.3 · GLASS", color = GlassSilverAccent, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp)
+                Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
+                Spacer(Modifier.width(5.dp))
+                Text("v0.4", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.height(2.dp))
-            Text(status, color = GlassTextMuted, fontSize = 9.sp)
+            Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
     }
 }
@@ -763,23 +1199,24 @@ private fun PageColumn(content: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         content = content
     )
 }
 
 @Composable
-private fun SectionHeader(title: String, subtitle: String) {
+private fun SectionHeader(title: String, subtitle: String, pal: GlassPalette) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(title, color = GlassTextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
-        Text(subtitle, color = GlassTextSecondary, fontSize = 12.sp)
+        Text(title, color = pal.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
+        Text(subtitle, color = pal.textSecondary, fontSize = 12.sp)
     }
 }
 
 @Composable
 private fun EditorScreen(
     project: StudioProject,
+    pal: GlassPalette,
     onProjectChange: (StudioProject) -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit
@@ -788,258 +1225,334 @@ private fun EditorScreen(
     var showTemplates by remember { mutableStateOf(false) }
 
     PageColumn {
-        SectionHeader("Editor", "Engine v0.3 · Liquid Glass UI, 3D helper & 20 SFX offline.")
-        GlassPanel {
+        SectionHeader("Editor", "Engine v0.4 · Motion Director, Liquid Glass, 3D & 26 SFX.", pal)
+        GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text("SOURCE.JS", color = GlassSilverAccent, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.8.sp)
-                    Text("${project.sourceBody.length} / 262.144 karakter", color = GlassTextMuted, fontSize = 10.sp)
+                    Text("SOURCE.JS", color = pal.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.8.sp)
+                    Text("${project.sourceBody.length} / 262.144 karakter", color = pal.textMuted, fontSize = 10.sp)
                 }
-                GlassMiniPill("Templates") { showTemplates = true }
-                GlassMiniPill("Reset") {
+                GlassMiniPill("Templates", pal) { showTemplates = true }
+                GlassMiniPill("Reset", pal) {
                     onProjectChange(project.copy(sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap()))
                 }
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(320.dp)
+                    .height(310.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0x9906080D))
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(16.dp))
+                    .background(pal.wellBg)
+                    .border(1.dp, pal.borderMid, RoundedCornerShape(16.dp))
                     .padding(14.dp)
             ) {
                 BasicTextField(
                     value = project.sourceBody,
                     onValueChange = { value -> if (value.length <= ProjectMetadataParser.MAX_SOURCE_CHARS) onProjectChange(project.copy(sourceBody = value)) },
                     modifier = Modifier.fillMaxSize(),
-                    textStyle = TextStyle(color = Color(0xFFE3EAF4), fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 16.sp),
-                    cursorBrush = SolidColor(Color.White)
+                    textStyle = TextStyle(color = pal.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 16.sp),
+                    cursorBrush = SolidColor(pal.iosBlue)
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                GlassSecondaryButton("Import JSON", onClick = onImport, modifier = Modifier.weight(1f))
-                GlassSecondaryButton("Export JSON", onClick = onExport, modifier = Modifier.weight(1f))
+                GlassSecondaryButton("Import JSON", pal, onClick = onImport, modifier = Modifier.weight(1f))
+                GlassSecondaryButton("Export JSON", pal, onClick = onExport, modifier = Modifier.weight(1f))
             }
         }
         if (parsed.isFailure) {
-            GlassPanel {
-                Text("Metadata Error", color = Color(0xFFFF7D8A), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text(parsed.exceptionOrNull()?.message ?: "Metadata tidak valid.", color = Color(0xFFFFC5CC), fontSize = 12.sp)
+            GlassPanel(pal) {
+                Text("Metadata Error", color = Color(0xFFFF6B7A), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(parsed.exceptionOrNull()?.message ?: "Metadata tidak valid.", color = pal.textSecondary, fontSize = 12.sp)
             }
         } else {
             val metadata = parsed.getOrThrow()
             if (metadata.audio.cues.isNotEmpty() || metadata.audio.ambience != "none") {
-                GlassPanel {
+                GlassPanel(pal) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(GlassMintDot, CircleShape))
+                        Box(Modifier.size(8.dp).background(pal.iosGreen, CircleShape))
                         Spacer(Modifier.width(8.dp))
-                        Text("AUDIO & SFX READY", color = GlassSilverAccent, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.8.sp)
+                        Text("AUDIO & SFX READY", color = pal.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.8.sp)
                     }
                     Text(
-                        "Bed: ${metadata.audio.ambience} · ${metadata.audio.cues.size} SFX cues otomatis di-mux ke AAC MP4.",
-                        color = GlassTextSecondary,
-                        fontSize = 12.sp
+                        "Bed: ${metadata.audio.ambience} · ${metadata.audio.cues.size} SFX cues sinkron otomatis ke AAC MP4.",
+                        color = pal.textSecondary, fontSize = 12.sp
                     )
                 }
             }
-            PropsPanel(metadata = metadata, values = project.propsValues, onChange = { onProjectChange(project.copy(propsValues = it)) })
+            PropsPanel(metadata = metadata, values = project.propsValues, pal = pal, onChange = { onProjectChange(project.copy(propsValues = it)) })
         }
-        Spacer(Modifier.height(6.dp))
     }
 
     if (showTemplates) {
         AlertDialog(
             onDismissRequest = { showTemplates = false },
-            containerColor = Color(0xFF151B25),
-            title = { Text("Template v0.3 Liquid Glass", color = GlassTextPrimary, fontWeight = FontWeight.Bold) },
+            containerColor = pal.dialogBg,
+            title = { Text("Template v0.4 Motion Director", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassSecondaryButton("Liquid Glass Studio · Chimes + Tap (5s)", onClick = {
-                        onProjectChange(project.copy(name = "Liquid Glass Studio", sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 5)))
+                    GlassSecondaryButton("iOS 26 Liquid Glass Hero (5s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "iOS 26 Liquid Glass Hero", sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 5)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("Editorial Whip Cards · Keynote + SFX (10s)", onClick = {
-                        onProjectChange(project.copy(name = "Editorial Whip Cards", sourceBody = EDITORIAL_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                    GlassSecondaryButton("Kinetic Data Storytelling · Spline + Counter (10s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "Kinetic Data Storytelling", sourceBody = DATA_STORY_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("Data Counter Studio · Tick + Chime (5s)", onClick = {
-                        onProjectChange(project.copy(name = "Data Counter Studio", sourceBody = COUNTER_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 5)))
+                    GlassSecondaryButton("3D Botanical Orbit · Micro 3D Engine (10s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "3D Botanical Orbit", sourceBody = BOTANICAL_3D_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("Cute Garden Story · Stagger + Confetti (10s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "Cute Garden Story", sourceBody = CUTE_STORY_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                 }
             },
-            confirmButton = { TextButton(onClick = { showTemplates = false }) { Text("Tutup", color = GlassSilverAccent) } }
+            confirmButton = { TextButton(onClick = { showTemplates = false }) { Text("Tutup", color = pal.iosBlue) } }
         )
     }
 }
 
-private val EDITORIAL_TEMPLATE = """/*<studio-meta>
+private val DATA_STORY_TEMPLATE = """/*<studio-meta>
 {
-  "schemaVersion": 3,
-  "title": "Editorial Whip Cards",
+  "schemaVersion": 4,
+  "title": "Kinetic Data Storytelling",
   "defaultDurationSeconds": 10,
-  "seed": 42,
+  "seed": 44,
   "props": [
     {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
-    {"key":"headline","label":"Headline","type":"text","default":"Rawat pelan, tumbuh"},
-    {"key":"accentWord","label":"Kata Aksen","type":"text","default":"maksimal."},
-    {"key":"accent","label":"Warna Aksen","type":"color","default":"#239B56"}
+    {"key":"metric","label":"Label Grafik","type":"text","default":"PERTUMBUHAN TANAMAN"},
+    {"key":"accent","label":"Warna Aksen","type":"color","default":"#32D74B"}
+  ],
+  "audio": {
+    "ambience": "apple_keynote_minimal",
+    "ambienceVolume": 0.22,
+    "cues": [
+      {"p": 0.02, "sfx": "liquid_morph", "gain": 0.78},
+      {"p": 0.22, "sfx": "tick", "gain": 0.68, "pitch": 1.05},
+      {"p": 0.46, "sfx": "glass_slide", "gain": 0.90},
+      {"p": 0.62, "sfx": "water_drop", "gain": 0.76},
+      {"p": 0.84, "sfx": "glass_shimmer", "gain": 0.88}
+    ]
+  }
+}
+</studio-meta>*/
+
+const accent = String(P.accent || "#32D74B");
+const pad = Math.min(W, H) * 0.068;
+const innerW = W - pad * 2;
+
+function drawSceneA(sp) {
+  ui.drawMeshBg(ctx, W, H, "#070B10", [
+    { x: 0.84, y: 0.16, r: 0.75, col: accent, a: 0.28 },
+    { x: 0.16, y: 0.82, r: 0.70, col: "#4AA3FF", a: 0.22 }
+  ], t);
+  ctx.save();
+  cam.apply(ctx, { x: 0, y: interpolate(sp, [0, 1], [-18 * S, 18 * S]), zoom: interpolate(sp, [0, 0.3], [1.1, 1.0], { easing: ease.snap }), rot: 0 }, 1.0);
+  ui.drawPill(ctx, pad, H * 0.14, String(P.metric || "PERTUMBUHAN TANAMAN"), "rgba(255,255,255,0.12)", accent, Math.max(12, Math.round(21 * S)));
+  const countVal = interpolate(sp, [0.06, 0.78], [12, 98], { easing: ease.apple });
+  fx.text.counterRoll(ctx, countVal, pad, H * 0.21, Math.round(148 * S), "#FFFFFF", "%", "left");
+
+  const cardY = H * 0.44;
+  const cardH = 380 * S;
+  ui.drawLiquidGlass(ctx, pad, cardY, innerW, cardH, 30 * S, { light: false, sweep: sp });
+  fx.chart.spline(ctx, [18, 26, 24, 42, 58, 54, 78, 96], pad + 34 * S, cardY + 64 * S, innerW - 68 * S, cardH - 120 * S, accent, ui.seg(sp, 0.12, 0.88));
+  ctx.restore();
+}
+
+function drawSceneB(sp) {
+  ui.drawMeshBg(ctx, W, H, "#F2F5FA", [
+    { x: 0.80, y: 0.18, r: 0.72, col: accent, a: 0.24 },
+    { x: 0.18, y: 0.84, r: 0.68, col: "#A6C8FF", a: 0.28 }
+  ], t);
+  ctx.save();
+  cam.apply(ctx, { x: 0, y: 0, zoom: interpolate(sp, [0, 1], [1.06, 1.0], { easing: ease.apple }), rot: 0 }, 1.0);
+  const fS = Math.round(76 * S);
+  const used = ui.drawRichText(ctx, [
+    { text: "Hasil nyata dari perawatan" },
+    { text: "konsisten.", italic: true, color: accent }
+  ], pad, H * 0.18, innerW, fS, fS * 1.18, "#0E141D", ui.seg(sp, 0.04, 0.46), "left");
+
+  const cardY = H * 0.18 + used + 56 * S;
+  const cardH = 360 * S;
+  ui.drawLiquidGlass(ctx, pad, cardY, innerW, cardH, 30 * S, { light: true, sweep: sp });
+  fx.chart.bars(ctx, [
+    { value: 0.42, label: "W1", color: "#9EB2C8" },
+    { value: 0.66, label: "W2", color: "#72B5E8" },
+    { value: 0.84, label: "W3", color: "#4AD08A" },
+    { value: 0.98, label: "W4", color: accent }
+  ], pad + 42 * S, cardY + 52 * S, innerW - 84 * S, cardH - 120 * S, Math.round(fps * 5.0));
+
+  fx.text.kineticMask(ctx, String(P.brand || "Seflorner") + ".", W * 0.5, cardY + cardH + 64 * S, Math.round(58 * S), "#0E141D", ui.seg(sp, 0.42, 0.86), "center");
+  ctx.restore();
+}
+
+if (p < 0.46) drawSceneA(ui.seg(p, 0.0, 0.54));
+else if (p < 0.56) fx.transition.glassSlide(ctx, ui.seg(p, 0.46, 0.56), () => drawSceneA(ui.seg(p, 0.0, 0.54)), () => drawSceneB(ui.seg(p, 0.46, 1.0)));
+else drawSceneB(ui.seg(p, 0.46, 1.0));
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(120,140,160,0.22)");
+"""
+
+private val BOTANICAL_3D_TEMPLATE = """/*<studio-meta>
+{
+  "schemaVersion": 4,
+  "title": "3D Botanical Orbit",
+  "defaultDurationSeconds": 10,
+  "seed": 77,
+  "props": [
+    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
+    {"key":"roseColor","label":"Warna Mawar","type":"color","default":"#E03A58"},
+    {"key":"leafColor","label":"Warna Daun","type":"color","default":"#2B9B5E"}
   ],
   "audio": {
     "ambience": "forest_air",
     "ambienceVolume": 0.24,
     "cues": [
-      {"p": 0.02, "sfx": "glass_slide", "gain": 0.78},
-      {"p": 0.14, "sfx": "glass_tap", "gain": 0.72, "pitch": 1.0},
-      {"p": 0.22, "sfx": "glass_tap", "gain": 0.72, "pitch": 1.14},
-      {"p": 0.48, "sfx": "whip", "gain": 0.90},
-      {"p": 0.62, "sfx": "sparkle", "gain": 0.75},
-      {"p": 0.80, "sfx": "bloom", "gain": 0.88}
+      {"p": 0.02, "sfx": "swoosh_deep", "gain": 0.78},
+      {"p": 0.28, "sfx": "bloom", "gain": 0.86},
+      {"p": 0.65, "sfx": "sparkle", "gain": 0.78},
+      {"p": 0.86, "sfx": "chime", "gain": 0.88}
     ]
   }
 }
 </studio-meta>*/
 
-const accent = String(P.accent || "#239B56");
+const roseCol = String(P.roseColor || "#E03A58");
+const leafCol = String(P.leafColor || "#2B9B5E");
 const pad = Math.min(W, H) * 0.068;
 const innerW = W - pad * 2;
-const whip = ease.whip(ui.seg(p, 0.46, 0.56));
 
-function drawLightScene(sp, outU) {
-  const cState = { x: outU * W * 1.04, y: interpolate(sp, [0, 1], [-16 * S, 16 * S]), zoom: interpolate(sp, [0, 0.3], [1.1, 1.0], { easing: ease.snap }), rot: -outU * 0.03 };
-  ui.drawMeshBg(ctx, W, H, "#F5F6F2", [
-    { x: 0.85, y: 0.16, r: 0.68, col: accent, a: 0.24 },
-    { x: 0.14, y: 0.85, r: 0.62, col: "#F2C14E", a: 0.24 }
-  ], t);
-  ctx.save();
-  cam.apply(ctx, cState, 1.0);
-  const fSize = Math.round(76 * S);
-  const used = ui.drawRichText(ctx, [
-    { text: String(P.headline || "Rawat pelan, tumbuh") },
-    { text: String(P.accentWord || "maksimal."), italic: true, color: accent }
-  ], pad, H * 0.16, innerW, fSize, fSize * 1.15, "#111814", ui.seg(sp, 0.04, 0.42), "left");
+ui.drawMeshBg(ctx, W, H, "#050B08", [
+  { x: 0.5, y: 0.42, r: 0.68, col: roseCol, a: 0.24 },
+  { x: 0.2, y: 0.82, r: 0.62, col: leafCol, a: 0.20 }
+], t);
 
-  const items = [
-    { t: "Cahaya & sirkulasi udara", v: 0.92, l: "92%" },
-    { t: "Nutrisi akar seimbang", v: 0.86, l: "86%" }
-  ];
-  const cH = 175 * S;
-  const startY = H * 0.16 + used + 70 * S;
-  for (let i = 0; i < items.length; i++) {
-    const spCard = fx.stagger(frame, i + 3, Math.round(fps * 0.35));
-    const cy = startY + i * (cH + 26 * S);
-    ctx.save();
-    ctx.globalAlpha = ui.clamp(spCard * 1.3, 0, 1);
-    ctx.translate((1 - spCard) * 110 * S, 0);
-    ui.drawGlassCard(ctx, pad, cy, innerW, cH, 26 * S, { light: true });
-    ctx.fillStyle = "#111814";
-    ctx.font = "800 " + Math.max(15, Math.round(33 * S)) + "px sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(items[i].t, pad + 32 * S, cy + cH * 0.5, innerW - 170 * S);
-    ui.drawRing(ctx, pad + innerW - 76 * S, cy + cH * 0.5, 44 * S, items[i].v * ease.apple(ui.seg(sp, 0.25 + i * 0.12, 0.85)), accent, items[i].l, "rgba(17,24,20,0.08)", "#111814");
-    ctx.restore();
-  }
-  ctx.restore();
+const az = -0.4 + p * Math.PI * 2.2;
+const elev = 0.28 + Math.sin(p * Math.PI) * 0.34;
+const dist = (W > H ? 5.2 : 6.6) - Math.sin(p * Math.PI) * 1.1;
+const eye = [dist * Math.cos(elev) * Math.sin(az), 0.35 + dist * Math.sin(elev), dist * Math.cos(elev) * Math.cos(az)];
+const sc = d3.createScene(eye, [0, 0.35, 0], 0.72, W, H, 0.44);
+
+// 28 kelopak mawar 3D menggunakan Micro 3D Engine v0.4
+const bloom = ease.apple(ui.seg(p, 0.05, 0.62));
+const golden = 2.399963229728653;
+for (let i = 0; i < 28; i++) {
+  const lay = i / 27;
+  const ang = i * golden;
+  const pb = ease.snap(ui.seg(bloom, (1 - lay) * 0.3, 0.7 + (1 - lay) * 0.3));
+  const rad = ui.lerp(0.08, 0.48, lay);
+  const pH = ui.lerp(0.45, 0.95, lay);
+  const pW = ui.lerp(0.28, 0.72, lay);
+  const pitch = ui.lerp(0.15, 0.95 * lay + 0.2, pb);
+  const pts = [
+    [-pW * 0.25, 0, 0], [pW * 0.25, 0, 0], [pW * 0.52, pH * 0.62, -0.12],
+    [0, pH, 0.08 * pb], [-pW * 0.52, pH * 0.62, -0.12]
+  ].map((pt) => {
+    let q = d3.rotX(pt, pitch);
+    q = [q[0], q[1] + (1 - lay) * 0.26, q[2] + rad];
+    return d3.rotY(q, ang);
+  });
+  sc.poly(pts, roseCol, { col2: "#FF9EB2", twoSided: true, spec: 24, zBias: -lay * 0.02 });
 }
 
-function drawDarkFinale(sp, inU) {
-  const cState = { x: -(1 - inU) * W * 1.04, y: 0, zoom: interpolate(sp, [0, 1], [1.08, 1.0], { easing: ease.apple }), rot: (1 - inU) * 0.03 };
-  ui.drawMeshBg(ctx, W, H, "#06130C", [{ x: 0.5, y: 0.44, r: 0.68, col: accent, a: 0.28 }], t);
-  ctx.save();
-  cam.apply(ctx, cState, 1.0);
-  const ringP = ease.snap(ui.seg(sp, 0.06, 0.65));
-  ui.drawRing(ctx, W * 0.5, H * 0.40, 108 * S, ringP, accent, Math.round(ringP * 100) + "%", "rgba(255,255,255,0.10)", "#F5FAF7", 10 * S);
-  const bSize = Math.round(86 * S);
-  ui.drawRichText(ctx, [
-    { text: String(P.brand || "Seflorner") },
-    { text: ".", color: accent }
-  ], W * 0.5, H * 0.57, innerW, bSize, bSize * 1.15, "#F5FAF7", ui.seg(sp, 0.25, 0.72), "center");
-  ctx.restore();
+// 4 daun hijau 3D
+for (let i = 0; i < 4; i++) {
+  const a = i * Math.PI * 0.5 + 0.4;
+  const pts = [[0, -0.1, 0], [0.42, -0.15, -0.25], [1.1, -0.35, 0], [0.42, -0.15, 0.25]].map((pt) => d3.rotY(pt, a));
+  sc.poly(pts, leafCol, { col2: "#62D492", twoSided: true, spec: 20 });
 }
 
-if (p < 0.46) {
-  drawLightScene(ui.seg(p, 0.0, 0.56), 0);
-} else if (p < 0.56) {
-  drawLightScene(ui.seg(p, 0.0, 0.56), whip);
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(W * (1 - whip), 0, W * whip + 2, H);
-  ctx.clip();
-  drawDarkFinale(ui.seg(p, 0.46, 1.0), whip);
-  ctx.restore();
-  ctx.fillStyle = accent;
-  ctx.fillRect(W * (1 - whip) - 3 * S, 0, 6 * S, H);
-} else {
-  drawDarkFinale(ui.seg(p, 0.46, 1.0), 1);
+// Orbit partikel emas 3D
+for (let i = 0; i < 16; i++) {
+  const oa = rand(300 + i) * Math.PI * 2 + t * 0.4;
+  const rr = 1.4 + rand(320 + i) * 1.4;
+  sc.orb([Math.cos(oa) * rr, (rand(340 + i) - 0.3) * 2.2, Math.sin(oa) * rr], 0.04, "#FFE08A", 0.85);
 }
-ctx.fillStyle = accent;
-ctx.fillRect(0, H - Math.max(4, 6 * S), W * p, Math.max(4, 6 * S));
+
+sc.render(ctx, S);
+fx.particles.petals(ctx, 10, roseCol, 0.25);
+
+const footY = H - pad - 210 * S;
+ui.drawLiquidGlass(ctx, pad, footY, innerW, 155 * S, 26 * S, { light: false, sweep: p });
+fx.text.wordStagger(ctx, String(P.brand || "Seflorner") + " · 3D Rosa", pad + 30 * S, footY + 34 * S, innerW - 60 * S, Math.round(44 * S), "#FFFFFF", 6, "left");
+fx.text.typewriter(ctx, "GOLDEN ANGLE 137.5° · Z-BUFFER ENGINE", pad + 30 * S, footY + 98 * S, Math.round(21 * S), "#A8DEC0", ui.seg(p, 0.15, 0.72), true);
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, roseCol, "rgba(255,255,255,0.14)");
 """
 
-private val COUNTER_TEMPLATE = """/*<studio-meta>
+private val CUTE_STORY_TEMPLATE = """/*<studio-meta>
 {
-  "schemaVersion": 3,
-  "title": "Data Counter Studio",
-  "defaultDurationSeconds": 5,
-  "seed": 31,
+  "schemaVersion": 4,
+  "title": "Cute Garden Story",
+  "defaultDurationSeconds": 10,
+  "seed": 55,
   "props": [
-    {"key":"label","label":"Label","type":"text","default":"GROWTH INDEX"},
-    {"key":"accent","label":"Accent","type":"color","default":"#DCE5F0"}
+    {"key":"line1","label":"Kalimat 1","type":"text","default":"Mulai dari satu pot mungil di rumah."},
+    {"key":"line2","label":"Kalimat 2","type":"text","default":"Siram sabar setiap pagi sampai mekar!"},
+    {"key":"accent","label":"Warna Hijau","type":"color","default":"#2EA864"}
   ],
   "audio": {
-    "ambience": "minimal_pulse",
-    "ambienceVolume": 0.20,
+    "ambience": "warm_pad",
+    "ambienceVolume": 0.22,
     "cues": [
-      {"p": 0.04, "sfx": "glass_slide", "gain": 0.72},
-      {"p": 0.20, "sfx": "tick", "gain": 0.6, "pitch": 0.95},
-      {"p": 0.40, "sfx": "tick", "gain": 0.65, "pitch": 1.05},
-      {"p": 0.60, "sfx": "tick", "gain": 0.7, "pitch": 1.15},
-      {"p": 0.82, "sfx": "chime", "gain": 0.9}
+      {"p": 0.02, "sfx": "pop", "gain": 0.78},
+      {"p": 0.24, "sfx": "water_drop", "gain": 0.82, "pitch": 1.05},
+      {"p": 0.50, "sfx": "liquid_morph", "gain": 0.84},
+      {"p": 0.78, "sfx": "sparkle", "gain": 0.86}
     ]
   }
 }
 </studio-meta>*/
 
-const accent = String(P.accent || "#DCE5F0");
-const intro = spring({ frame, fps, config: { damping: 14, stiffness: 130 } });
-ui.drawMeshBg(ctx, W, H, "#090D14", [{ x: 0.5, y: 0.46, r: 0.68, col: accent, a: 0.24 }], t);
+const accent = String(P.accent || "#2EA864");
+const pad = Math.min(W, H) * 0.068;
+const innerW = W - pad * 2;
 
-ctx.save();
-cam.apply(ctx, { x: 0, y: 0, zoom: interpolate(intro, [0, 1], [1.16, 1.0]) + p * 0.05, rot: 0 }, 1.0);
-const prog = ease.ios(ui.seg(p, 0.06, 0.86));
-const val = Math.round(prog * 100);
-ui.drawRing(ctx, W * 0.5, H * 0.45, 220 * S, prog, accent, "", "rgba(255,255,255,0.10)", "#FFFFFF", 16 * S);
+function drawPart1(sp) {
+  ui.drawMeshBg(ctx, W, H, "#FFF7EA", [
+    { x: 0.82, y: 0.16, r: 0.68, col: "#FFD166", a: 0.34 },
+    { x: 0.18, y: 0.84, r: 0.64, col: accent, a: 0.22 }
+  ], t);
+  ui.drawLiquidGlass(ctx, pad, pad + 40 * S, innerW, 220 * S, 28 * S, { light: true, sweep: sp });
+  fx.text.wordStagger(ctx, String(P.line1 || "Mulai dari satu pot mungil di rumah."), pad + 32 * S, pad + 78 * S, innerW - 64 * S, Math.round(48 * S), "#1D2C22", 2, "left");
+  const dropY = interpolate(sp, [0.15, 0.85], [H * 0.42, H * 0.66], { easing: ease.apple });
+  ui.drawWaterDrop(ctx, W * 0.5, dropY, 76 * S, "#64C8F5");
+}
 
-ctx.textAlign = "center";
-ctx.textBaseline = "middle";
-ctx.fillStyle = "#F5F7FA";
-ctx.font = "800 " + Math.max(64, Math.round(168 * S)) + "px sans-serif";
-ctx.fillText(String(val).padStart(2, "0") + "%", W * 0.5, H * 0.45);
+function drawPart2(sp) {
+  ui.drawMeshBg(ctx, W, H, "#F1FBF3", [
+    { x: 0.5, y: 0.5, r: 0.75, col: accent, a: 0.26 },
+    { x: 0.8, y: 0.2, r: 0.55, col: "#FF8FA3", a: 0.24 }
+  ], t);
+  ui.drawLiquidGlass(ctx, pad, pad + 40 * S, innerW, 220 * S, 28 * S, { light: true, sweep: sp });
+  fx.text.wordStagger(ctx, String(P.line2 || "Siram sabar setiap pagi sampai mekar!"), pad + 32 * S, pad + 78 * S, innerW - 64 * S, Math.round(48 * S), "#1D2C22", Math.round(fps * 4.8), "left");
+  fx.text.highlightSweep(ctx, "MEKAR PENUH!", W * 0.5, H * 0.54, Math.round(64 * S), accent, "#FFFFFF", ui.seg(sp, 0.20, 0.62), "center");
+  fx.particles.confetti(ctx, 22, ["#FF6B6B", "#FFD166", accent, "#56CFE1"], ui.seg(sp, 0.25, 0.55));
+}
 
-ctx.fillStyle = "#A9B5C6";
-ctx.font = "700 " + Math.max(15, Math.round(28 * S)) + "px monospace, sans-serif";
-ctx.fillText(String(P.label || "GROWTH INDEX").toUpperCase(), W * 0.5, H * 0.72);
-ctx.restore();
-
-ctx.fillStyle = accent;
-ctx.fillRect(0, H - Math.max(4, 6 * S), W * p, Math.max(4, 6 * S));
+if (p < 0.46) drawPart1(ui.seg(p, 0.0, 0.54));
+else if (p < 0.56) fx.transition.liquidWipe(ctx, ui.seg(p, 0.46, 0.56), () => drawPart1(ui.seg(p, 0.0, 0.54)), () => drawPart2(ui.seg(p, 0.46, 1.0)));
+else drawPart2(ui.seg(p, 0.46, 1.0));
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(29,44,34,0.14)");
 """
 
 @Composable
-private fun PropsPanel(metadata: StudioMetadata, values: Map<String, String>, onChange: (Map<String, String>) -> Unit) {
-    GlassPanel {
+private fun PropsPanel(
+    metadata: StudioMetadata,
+    values: Map<String, String>,
+    pal: GlassPalette,
+    onChange: (Map<String, String>) -> Unit
+) {
+    GlassPanel(pal) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("PROPS", color = GlassSilverAccent, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp, fontSize = 11.sp)
+            Text("PROPS", color = pal.textPrimary, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp, fontSize = 11.sp)
             Spacer(Modifier.weight(1f))
-            Text("${metadata.props.size} controls", color = GlassTextMuted, fontSize = 10.sp)
+            Text("${metadata.props.size} controls", color = pal.textMuted, fontSize = 10.sp)
         }
-        if (metadata.props.isEmpty()) Text("Tambahkan blok studio-meta di awal source untuk membuat kontrol Props.", color = GlassTextSecondary, fontSize = 12.sp)
+        if (metadata.props.isEmpty()) Text("Tambahkan blok studio-meta di awal source untuk membuat kontrol Props.", color = pal.textSecondary, fontSize = 12.sp)
         metadata.props.forEach { prop ->
             val value = values[prop.key] ?: prop.defaultValue
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(prop.label, color = GlassTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(prop.label, color = pal.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 when (prop.type) {
                     PropType.TEXT, PropType.COLOR -> OutlinedTextField(
                         value = value,
@@ -1048,36 +1561,32 @@ private fun PropsPanel(metadata: StudioMetadata, values: Map<String, String>, on
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0x88FFFFFF),
-                            unfocusedBorderColor = Color(0x2EFFFFFF),
-                            focusedTextColor = GlassTextPrimary,
-                            unfocusedTextColor = GlassTextPrimary,
-                            focusedContainerColor = Color(0x55070A10),
-                            unfocusedContainerColor = Color(0x44070A10)
+                            focusedBorderColor = pal.iosBlue,
+                            unfocusedBorderColor = pal.borderMid,
+                            focusedTextColor = pal.textPrimary,
+                            unfocusedTextColor = pal.textPrimary,
+                            focusedContainerColor = pal.wellBg,
+                            unfocusedContainerColor = pal.wellBg
                         ),
                         textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-                        label = { Text(if (prop.type == PropType.COLOR) "Warna HEX" else "Teks", fontSize = 10.sp, color = GlassTextSecondary) }
+                        label = { Text(if (prop.type == PropType.COLOR) "Warna HEX" else "Teks", fontSize = 10.sp, color = pal.textSecondary) }
                     )
                     PropType.RANGE -> {
                         val number = value.toFloatOrNull()?.coerceIn(prop.min, prop.max) ?: prop.min
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Slider(
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            LiquidGlassSlider(
                                 value = number,
                                 onValueChange = { next -> onChange(values + (prop.key to next.toString())) },
                                 valueRange = prop.min..prop.max,
-                                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color(0x33FFFFFF)),
+                                pal = pal,
                                 modifier = Modifier.weight(1f)
                             )
-                            Text("%.2f".format(number), color = GlassSilverAccent, fontSize = 11.sp, modifier = Modifier.width(44.dp))
+                            Text("%.2f".format(number), color = pal.textPrimary, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(42.dp))
                         }
                     }
                     PropType.BOOLEAN -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (value.equals("true", true)) "Aktif" else "Nonaktif", color = GlassTextSecondary, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                        Switch(
-                            checked = value.equals("true", true),
-                            onCheckedChange = { onChange(values + (prop.key to it.toString())) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = GlassMintDot, uncheckedTrackColor = Color(0x30FFFFFF))
-                        )
+                        Text(if (value.equals("true", true)) "Aktif" else "Nonaktif", color = pal.textSecondary, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        LiquidGlassSwitch(checked = value.equals("true", true), pal = pal) { onChange(values + (prop.key to it.toString())) }
                     }
                 }
             }
@@ -1088,6 +1597,7 @@ private fun PropsPanel(metadata: StudioMetadata, values: Map<String, String>, on
 @Composable
 private fun RenderScreen(
     project: StudioProject,
+    pal: GlassPalette,
     onProjectChange: (StudioProject) -> Unit,
     runtime: app.codetovideo.studio.render.WebCanvasRuntime,
     ready: Boolean,
@@ -1096,6 +1606,7 @@ private fun RenderScreen(
     renderDone: Int,
     renderTotal: Int,
     renderMessage: String,
+    externalRefreshTick: Int,
     onPreview: (Int) -> Unit,
     onRender: () -> Unit,
     onCancel: () -> Unit
@@ -1109,25 +1620,25 @@ private fun RenderScreen(
     LaunchedEffect(project.renderSettings.totalFrames()) {
         previewFrame = previewFrame.coerceIn(0, (project.renderSettings.totalFrames() - 1).coerceAtLeast(0))
     }
-    LaunchedEffect(project.projectId, project.sourceBody, project.propsValues, project.renderSettings, previewFrame, ready) {
+    LaunchedEffect(project.projectId, project.sourceBody, project.propsValues, project.renderSettings, previewFrame, ready, externalRefreshTick) {
         if (ready) onPreview(previewFrame)
     }
 
     PageColumn {
-        SectionHeader("Render Studio", "H.264 + AAC SFX / MP4 · pemrosesan lokal offline")
-        GlassPanel {
+        SectionHeader("Render Studio", "H.264 + 26 SFX AAC / MP4 · pemrosesan lokal offline", pal)
+        GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("LIVE CANVAS PREVIEW", color = GlassSilverAccent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                Text("LIVE CANVAS PREVIEW", color = pal.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
                 Spacer(Modifier.weight(1f))
-                Text(if (ready) "READY" else "LOADING", color = if (ready) GlassMintDot else Color(0xFFFFC966), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(if (ready) "READY" else "LOADING", color = if (ready) pal.iosGreen else Color(0xFFFFC966), fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(265.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(18.dp))
                     .background(Color(0xFF06080D))
-                    .border(1.dp, Color(0x28FFFFFF), RoundedCornerShape(16.dp)),
+                    .border(1.dp, pal.borderMid, RoundedCornerShape(18.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 AndroidView(
@@ -1138,89 +1649,89 @@ private fun RenderScreen(
                 if (!ready) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Frame ${previewFrame + 1} / ${project.renderSettings.totalFrames()}", color = GlassTextSecondary, fontSize = 11.sp)
+                Text("Frame ${previewFrame + 1} / ${project.renderSettings.totalFrames()}", color = pal.textSecondary, fontSize = 11.sp)
                 Spacer(Modifier.weight(1f))
-                Text("%.2fs".format(previewFrame.toFloat() / project.renderSettings.fps.coerceAtLeast(1)), color = GlassTextMuted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                Text("%.2fs".format(previewFrame.toFloat() / project.renderSettings.fps.coerceAtLeast(1)), color = pal.textMuted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
             }
-            Slider(
+            LiquidGlassSlider(
                 value = previewFrame.toFloat(),
-                onValueChange = { previewFrame = it.toInt() },
+                onValueChange = { previewFrame = it.roundToInt() },
                 valueRange = 0f..(project.renderSettings.totalFrames() - 1).coerceAtLeast(1).toFloat(),
-                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color(0x30FFFFFF))
+                pal = pal
             )
-            GlassSecondaryButton("Refresh Preview", onClick = { onPreview(previewFrame) }, enabled = ready, modifier = Modifier.fillMaxWidth())
+            GlassSecondaryButton("Refresh Preview", pal, onClick = { onPreview(previewFrame) }, enabled = ready, modifier = Modifier.fillMaxWidth())
         }
 
-        GlassPanel {
-            Text("OUTPUT SETTINGS", color = GlassSilverAccent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
-            GlassSegmentBar("Resolusi sisi panjang", listOf("480", "720", "1080", "1440", "2160"), project.renderSettings.longEdge.toString()) {
+        GlassPanel(pal) {
+            Text("OUTPUT SETTINGS", color = pal.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+            GlassSegmentBar("Resolusi sisi panjang", listOf("480", "720", "1080", "1440", "2160"), project.renderSettings.longEdge.toString(), pal) {
                 onProjectChange(project.copy(renderSettings = project.renderSettings.copy(longEdge = it.toInt())))
             }
-            GlassSegmentBar("Aspect ratio", listOf("9:16", "16:9", "1:1", "4:5"), project.renderSettings.aspect) {
+            GlassSegmentBar("Aspect ratio", listOf("9:16", "16:9", "1:1", "4:5"), project.renderSettings.aspect, pal) {
                 onProjectChange(project.copy(renderSettings = project.renderSettings.copy(aspect = it)))
             }
-            GlassSegmentBar("Frame rate (FPS)", listOf("24", "30", "60"), project.renderSettings.fps.toString()) {
+            GlassSegmentBar("Frame rate (FPS)", listOf("24", "30", "60"), project.renderSettings.fps.toString(), pal) {
                 onProjectChange(project.copy(renderSettings = project.renderSettings.copy(fps = it.toInt())))
             }
-            GlassSegmentBar("Quality", listOf("low", "medium", "high", "ultra"), project.renderSettings.quality) {
+            GlassSegmentBar("Quality", listOf("low", "medium", "high", "ultra"), project.renderSettings.quality, pal) {
                 onProjectChange(project.copy(renderSettings = project.renderSettings.copy(quality = it)))
             }
-            GlassSegmentBar("Durasi video", listOf("3s", "5s", "10s", "15s", "30s", "60s"), "${project.renderSettings.durationSeconds}s") {
+            GlassSegmentBar("Durasi video", listOf("3s", "5s", "10s", "15s", "30s", "60s"), "${project.renderSettings.durationSeconds}s", pal) {
                 onProjectChange(project.copy(renderSettings = project.renderSettings.copy(durationSeconds = it.removeSuffix("s").toInt())))
             }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0x3506080D))
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(pal.wellBg)
+                    .border(1.dp, pal.borderMid, RoundedCornerShape(18.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Audio & SFX (AAC)", color = GlassTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Audio & SFX (AAC)", color = pal.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         if (hasAudioInCode) "$cueCount SFX · bed: $ambienceName"
                         else "Tambahkan blok audio di studio-meta",
-                        color = if (hasAudioInCode) GlassMintDot else GlassTextMuted,
+                        color = if (hasAudioInCode) pal.iosGreen else pal.textMuted,
                         fontSize = 10.sp
                     )
                 }
-                Switch(
+                LiquidGlassSwitch(
                     checked = project.renderSettings.includeAudio,
-                    onCheckedChange = { onProjectChange(project.copy(renderSettings = project.renderSettings.copy(includeAudio = it))) },
-                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = GlassMintDot, uncheckedTrackColor = Color(0x30FFFFFF))
+                    pal = pal,
+                    onCheckedChange = { onProjectChange(project.copy(renderSettings = project.renderSettings.copy(includeAudio = it))) }
                 )
             }
             val (w, h) = project.renderSettings.dimensions()
             val codecLabel = if (project.renderSettings.includeAudio && hasAudioInCode) "H.264 + AAC / MP4" else "H.264 / MP4"
-            Text("Output: ${w}×${h} px · ${project.renderSettings.totalFrames()} frames · $codecLabel", color = GlassTextMuted, fontSize = 10.sp)
+            Text("Output: ${w}×${h} px · ${project.renderSettings.totalFrames()} frames · $codecLabel", color = pal.textMuted, fontSize = 10.sp)
         }
 
-        GlassPanel {
-            Text("EXPORT", color = GlassSilverAccent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+        GlassPanel(pal) {
+            Text("EXPORT", color = pal.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
             if (isRendering) {
                 LinearProgressIndicator(
                     progress = { if (renderTotal > 0) renderDone.toFloat() / renderTotal else 0f },
                     modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
-                    color = Color.White,
-                    trackColor = Color(0x28FFFFFF)
+                    color = pal.iosBlue,
+                    trackColor = pal.wellBg
                 )
-                Text(renderMessage, color = GlassTextSecondary, fontSize = 11.sp)
-                GlassSecondaryButton("Cancel Render", onClick = onCancel, modifier = Modifier.fillMaxWidth())
+                Text(renderMessage, color = pal.textSecondary, fontSize = 11.sp)
+                GlassSecondaryButton("Cancel Render", pal, onClick = onCancel, modifier = Modifier.fillMaxWidth())
             } else {
-                GlassPrimaryButton("Render MP4", onClick = onRender, enabled = ready && exportSupported, modifier = Modifier.fillMaxWidth())
-                if (renderMessage.isNotBlank()) Text(renderMessage, color = GlassTextSecondary, fontSize = 11.sp)
+                GlassPrimaryButton("Render MP4", pal, onClick = onRender, enabled = ready && exportSupported, modifier = Modifier.fillMaxWidth())
+                if (renderMessage.isNotBlank()) Text(renderMessage, color = pal.textSecondary, fontSize = 11.sp)
             }
         }
-        Spacer(Modifier.height(6.dp))
     }
 }
 
 @Composable
 private fun GalleryScreen(
     activity: MainActivity,
+    pal: GlassPalette,
     keyRefresh: Int,
     onShare: (GalleryVideo) -> Unit,
     onDelete: (GalleryVideo) -> Unit
@@ -1236,52 +1747,51 @@ private fun GalleryScreen(
     }
 
     PageColumn {
-        SectionHeader("Galeri", "Hasil render MP4 di Movies/CodeToVideoStudio")
+        SectionHeader("Galeri", "Hasil render MP4 di Movies/CodeToVideoStudio", pal)
         if (loading) {
             Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp)
+                CircularProgressIndicator(color = pal.iosBlue, strokeWidth = 2.dp)
             }
         } else if (videos.isEmpty()) {
-            GlassPanel {
-                Text("Belum ada video", color = GlassTextPrimary, fontWeight = FontWeight.SemiBold)
-                Text("Hasil render MP4 akan muncul di sini setelah divalidasi.", color = GlassTextSecondary, fontSize = 12.sp)
+            GlassPanel(pal) {
+                Text("Belum ada video", color = pal.textPrimary, fontWeight = FontWeight.SemiBold)
+                Text("Hasil render MP4 akan muncul di sini setelah divalidasi.", color = pal.textSecondary, fontSize = 12.sp)
             }
         }
         videos.forEach { video ->
-            GlassPanel {
+            GlassPanel(pal) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0x26FFFFFF))
-                            .border(1.dp, Color(0x40FFFFFF), RoundedCornerShape(14.dp)),
+                            .background(pal.wellBg)
+                            .border(1.dp, pal.borderMid, RoundedCornerShape(14.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("▶", color = Color.White, fontSize = 16.sp)
+                        Text("▶", color = pal.textPrimary, fontSize = 16.sp)
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(video.name, color = GlassTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${video.durationLabel()} · ${GalleryRepository(activity).sizeLabel(video.sizeBytes)}", color = GlassTextSecondary, fontSize = 10.sp)
-                        Text(video.dateLabel(), color = GlassTextMuted, fontSize = 9.sp)
+                        Text(video.name, color = pal.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${video.durationLabel()} · ${GalleryRepository(activity).sizeLabel(video.sizeBytes)}", color = pal.textSecondary, fontSize = 10.sp)
+                        Text(video.dateLabel(), color = pal.textMuted, fontSize = 9.sp)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassPrimaryButton("Putar", onClick = { selectedVideo = video }, modifier = Modifier.weight(1f))
-                    GlassSecondaryButton("Bagikan", onClick = { onShare(video) }, modifier = Modifier.weight(1f))
-                    GlassMiniPill("Hapus") { onDelete(video) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    GlassPrimaryButton("Putar", pal, onClick = { selectedVideo = video }, modifier = Modifier.weight(1f))
+                    GlassSecondaryButton("Bagikan", pal, onClick = { onShare(video) }, modifier = Modifier.weight(1f))
+                    GlassMiniPill("Hapus", pal) { onDelete(video) }
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
     }
 
     selectedVideo?.let { video ->
         AlertDialog(
             onDismissRequest = { selectedVideo = null },
-            containerColor = Color(0xFF141923),
-            title = { Text(video.name, color = GlassTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp) },
+            containerColor = pal.dialogBg,
+            title = { Text(video.name, color = pal.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp) },
             text = {
                 AndroidView(
                     factory = { ctx ->
@@ -1294,7 +1804,7 @@ private fun GalleryScreen(
                     modifier = Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(14.dp))
                 )
             },
-            confirmButton = { TextButton(onClick = { selectedVideo = null }) { Text("Tutup", color = GlassSilverAccent) } }
+            confirmButton = { TextButton(onClick = { selectedVideo = null }) { Text("Tutup", color = pal.iosBlue) } }
         )
     }
 }
@@ -1302,6 +1812,7 @@ private fun GalleryScreen(
 @Composable
 private fun ProjectsScreen(
     activity: MainActivity,
+    pal: GlassPalette,
     keyRefresh: Int,
     currentProjectId: String,
     onOpen: (StudioProject) -> Unit,
@@ -1318,41 +1829,40 @@ private fun ProjectsScreen(
     LaunchedEffect(keyRefresh) { projects = withContext(Dispatchers.IO) { activity.projects.list() } }
 
     PageColumn {
-        SectionHeader("Simpan", "Proyek JSON tersimpan lokal di perangkat.")
+        SectionHeader("Simpan", "Proyek JSON tersimpan lokal di perangkat.", pal)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GlassPrimaryButton("+ New Project", onClick = onNew, modifier = Modifier.weight(1f))
-            GlassSecondaryButton("Import JSON", onClick = onImport, modifier = Modifier.weight(1f))
+            GlassPrimaryButton("+ New Project", pal, onClick = onNew, modifier = Modifier.weight(1f))
+            GlassSecondaryButton("Import JSON", pal, onClick = onImport, modifier = Modifier.weight(1f))
         }
-        GlassSecondaryButton("Export proyek aktif sebagai JSON", onClick = onExportCurrent, modifier = Modifier.fillMaxWidth())
-        if (projects.isEmpty()) GlassPanel { Text("Belum ada proyek tersimpan.", color = GlassTextSecondary, fontSize = 12.sp) }
+        GlassSecondaryButton("Export proyek aktif sebagai JSON", pal, onClick = onExportCurrent, modifier = Modifier.fillMaxWidth())
+        if (projects.isEmpty()) GlassPanel(pal) { Text("Belum ada proyek tersimpan.", color = pal.textSecondary, fontSize = 12.sp) }
         projects.forEach { item ->
-            GlassPanel {
+            GlassPanel(pal) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(item.name, color = GlassTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(item.name, color = pal.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text(
                             if (item.projectId == currentProjectId) "PROYEK AKTIF" else "${item.renderSettings.aspect} · ${item.renderSettings.fps} FPS",
-                            color = if (item.projectId == currentProjectId) GlassMintDot else GlassTextMuted,
+                            color = if (item.projectId == currentProjectId) pal.iosGreen else pal.textMuted,
                             fontSize = 10.sp
                         )
                     }
-                    GlassMiniPill("Open") { onOpen(item) }
+                    GlassMiniPill("Open", pal) { onOpen(item) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassMiniPill("Duplicate") { onDuplicate(item) }
-                    GlassMiniPill("Rename") { renameTarget = item; renameValue = item.name }
-                    GlassMiniPill("Delete") { onDelete(item) }
+                    GlassMiniPill("Duplicate", pal) { onDuplicate(item) }
+                    GlassMiniPill("Rename", pal) { renameTarget = item; renameValue = item.name }
+                    GlassMiniPill("Delete", pal) { onDelete(item) }
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
     }
 
     renameTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            containerColor = Color(0xFF151B25),
-            title = { Text("Rename Project", color = GlassTextPrimary) },
+            containerColor = pal.dialogBg,
+            title = { Text("Rename Project", color = pal.textPrimary) },
             text = {
                 OutlinedTextField(
                     value = renameValue,
@@ -1363,30 +1873,29 @@ private fun ProjectsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { if (renameValue.isNotBlank()) onRename(target, renameValue.trim()); renameTarget = null }) {
-                    Text("Save", color = Color.White)
+                    Text("Save", color = pal.iosBlue)
                 }
             },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel", color = GlassTextSecondary) } }
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel", color = pal.textSecondary) } }
         )
     }
 }
 
 @Composable
-private fun DocsScreen(activity: MainActivity, onSave: () -> Unit) {
+private fun DocsScreen(activity: MainActivity, pal: GlassPalette, onSave: () -> Unit) {
     val content = remember { activity.assets.open("docs/skill.md").bufferedReader().use { it.readText() } }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     PageColumn {
-        SectionHeader("Docs v0.3", "Kitab Motion Director, Liquid Glass, 3D & 20 SFX.")
+        SectionHeader("Docs v0.4", "Kitab Motion Director, Liquid Glass, 3D & 26 SFX.", pal)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GlassPrimaryButton("Salin Docs", onClick = {
+            GlassPrimaryButton("Salin Docs", pal, onClick = {
                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(content))
-                Toast.makeText(activity, "Docs v0.3 disalin", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Docs v0.4 disalin", Toast.LENGTH_SHORT).show()
             }, modifier = Modifier.weight(1f))
-            GlassSecondaryButton("Unduh .md", onClick = onSave, modifier = Modifier.weight(1f))
+            GlassSecondaryButton("Unduh .md", pal, onClick = onSave, modifier = Modifier.weight(1f))
         }
-        GlassPanel {
-            Text(content, color = Color(0xFFD8E0EC), fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 15.sp)
+        GlassPanel(pal) {
+            Text(content, color = pal.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 15.sp)
         }
-        Spacer(Modifier.height(6.dp))
     }
 }
