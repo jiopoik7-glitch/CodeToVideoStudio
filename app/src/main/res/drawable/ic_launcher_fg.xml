@@ -1,0 +1,52 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Daun khas apel di atas -->
+    <path android:pathData="M55.5,33.5 C55.2,28.2 59.4,24.1 64.8,23.6 C65.1,28.8 60.8,33.3 55.5,33.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="55"
+                android:startY="23"
+                android:endX="65"
+                android:endY="34">
+                <item android:offset="0.0" android:color="#FFFFFF"/>
+                <item android:offset="1.0" android:color="#CFD5DC"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Siluet apel perak-putih mengilap -->
+    <path android:pathData="M67.2,55.2 C67.1,49.4 71.9,46.4 72.1,46.3 C69.4,42.3 65.2,41.8 63.7,41.6 C60.1,41.2 56.6,43.7 54.8,43.7 C53.0,43.7 50.2,41.7 47.2,41.8 C43.3,41.9 39.7,44.1 37.7,47.6 C33.6,54.8 36.6,65.4 40.6,71.2 C42.6,74.1 45.0,77.3 48.1,77.2 C51.1,77.1 52.3,75.3 55.9,75.3 C59.5,75.3 60.6,77.2 63.7,77.1 C66.9,77.0 69.0,74.2 70.9,71.3 C73.2,68.0 74.1,64.8 74.2,64.6 C74.1,64.5 67.3,61.9 67.2,55.2 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="38"
+                android:startY="41"
+                android:endX="72"
+                android:endY="77">
+                <item android:offset="0.0" android:color="#FFFFFF"/>
+                <item android:offset="0.55" android:color="#E3E7EC"/>
+                <item android:offset="1.0" android:color="#AEB6C0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Lencana mikro play-code di tengah siluet -->
+    <path
+        android:pathData="M48.5,54.5 L44.2,58.8 L48.5,63.1"
+        android:strokeColor="#48505B"
+        android:strokeWidth="2.3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+    <path
+        android:pathData="M59.5,54.5 L63.8,58.8 L59.5,63.1"
+        android:strokeColor="#48505B"
+        android:strokeWidth="2.3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+    <path
+        android:pathData="M52.3,55.0 L58.0,58.8 L52.3,62.6 Z"
+        android:fillColor="#48505B"/>
+</vector>

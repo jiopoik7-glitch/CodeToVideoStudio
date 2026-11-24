@@ -4,10 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import app.codetovideo.studio.core.StudioAudioConfig
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -27,8 +24,7 @@ data class EncodedAudioTrack(
 )
 
 /**
- * Offline 44.1 kHz Stereo Procedural SFX & Ambience Engine + AAC Encoder.
- * 100% deterministic, royalty-free, zero external audio assets required.
+ * Offline 44.1 kHz Stereo Procedural SFX (20 SFX + 5 Ambience) & AAC Encoder v0.3.
  */
 object ProceduralAudioEngine {
     private const val SAMPLE_RATE = 44_100
@@ -58,23 +54,20 @@ object ProceduralAudioEngine {
         val mix = FloatArray(totalFrames * CHANNELS)
         val rng = FastRng(seed * 31 + 17)
 
-        // 1. Render Ambient Bed
         if (config.ambience != "none" && config.ambienceVolume > 0.005f) {
             renderAmbience(mix, totalFrames, dur.toDouble(), config.ambience, config.ambienceVolume, rng)
         }
 
-        // 2. Render Every SFX Cue on Timeline
         config.cues.forEachIndexed { idx, cue ->
             val timeSec = if (cue.atProgress != null) cue.atProgress * dur.toDouble() else cue.atSeconds
             val startFrame = (timeSec * SAMPLE_RATE).toInt()
             if (startFrame in 0 until totalFrames) {
                 val cueRng = FastRng(seed * 131 + idx * 977 + cue.sfx.hashCode())
-                val pan = ((idx % 3) - 1) * 0.14f // subtle stereo width
+                val pan = ((idx % 3) - 1) * 0.14f
                 renderSfx(mix, totalFrames, startFrame, cue.sfx, cue.gain, cue.pitch, pan, cueRng)
             }
         }
 
-        // 3. Master Soft Limiter + Fade Safety + 16-bit Little Endian PCM
         val pcm = ByteArray(totalFrames * CHANNELS * 2)
         val fadeSamples = (0.025 * SAMPLE_RATE).toInt()
         var byteIdx = 0
@@ -92,7 +85,6 @@ object ProceduralAudioEngine {
                 pcm[byteIdx++] = ((s16.toInt() shr 8) and 0xFF).toByte()
             }
         }
-
         return encodePcmToAac(pcm)
     }
 
@@ -116,10 +108,11 @@ object ProceduralAudioEngine {
         var lpL = 0f
         var lpR = 0f
         val chord = when (type) {
-            "dark_cinema" -> doubleArrayOf(65.41, 98.00, 130.81, 196.00) // C2, G2, C3, G3
-            "forest_air" -> doubleArrayOf(174.61, 220.00, 261.63, 329.63) // Fmaj7 airy
-            "minimal_pulse" -> doubleArrayOf(130.81, 196.00, 246.94, 293.66) // Cmaj9
-            else -> doubleArrayOf(130.81, 164.81, 196.00, 246.94, 293.66) // warm_pad Cmaj9
+            "dark_cinema" -> doubleArrayOf(65.41, 98.00, 130.81, 196.00)
+            "forest_air" -> doubleArrayOf(174.61, 220.00, 261.63, 329.63)
+            "minimal_pulse" -> doubleArrayOf(130.81, 196.00, 246.94, 293.66)
+            "ios_glass_chimes" -> doubleArrayOf(261.63, 329.63, 392.00, 523.25, 659.25)
+            else -> doubleArrayOf(130.81, 164.81, 196.00, 246.94, 293.66)
         }
 
         for (i in 0 until totalFrames) {
@@ -127,11 +120,25 @@ object ProceduralAudioEngine {
             val envIn = if (t < fadeIn) (t / fadeIn) else 1.0
             val envOut = if (t > durSec - fadeOut) max(0.0, (durSec - t) / fadeOut) else 1.0
             val env = (envIn * envOut).toFloat() * vol
-
             var l = 0f
             var r = 0f
 
             when (type) {
+                "ios_glass_chimes" -> {
+                    val swell = 0.6f + 0.4f * sin(TWO_PI * 0.25 * t).toFloat()
+                    for (k in chord.indices) {
+                        val f = chord[k]
+                        val shimmer = 0.5f + 0.5f * sin(TWO_PI * (0.3 + k * 0.11) * t + k).toFloat()
+                        val w = 0.14f / (1f + k * 0.22f)
+                        l += sin(TWO_PI * f * t).toFloat() * w * shimmer * swell
+                        r += sin(TWO_PI * (f * 1.002) * t + 0.5).toFloat() * w * shimmer * swell
+                    }
+                    val bellPos = (t * 0.85) % 1.0
+                    val bellIdx = ((t * 0.85).toInt()) % chord.size
+                    val bell = sin(TWO_PI * chord[bellIdx] * 2.0 * t).toFloat() * exp(-bellPos * 6.5).toFloat() * 0.14f
+                    l += bell * 0.8f
+                    r += bell * 1.2f
+                }
                 "forest_air" -> {
                     val breeze = 0.55f + 0.45f * sin(TWO_PI * 0.18 * t).toFloat()
                     lpL += 0.022f * (rng.nextFloat() - lpL)
@@ -169,7 +176,6 @@ object ProceduralAudioEngine {
                     r += lpL * 0.14f
                 }
                 else -> {
-                    // warm_pad
                     val swell = 0.7f + 0.3f * sin(TWO_PI * 0.22 * t).toFloat()
                     for (k in chord.indices) {
                         val f = chord[k]
@@ -241,6 +247,29 @@ object ProceduralAudioEngine {
             "whoosh" -> writeSweepNoise(0.46, 0.04f, 0.36f, 0.42, 160.0)
             "whip" -> writeSweepNoise(0.26, 0.08f, 0.62f, 0.32, 240.0)
             "swoosh_soft" -> writeSweepNoise(0.38, 0.03f, 0.22f, 0.45, 0.0)
+            "glass_slide" -> {
+                writeSweepNoise(0.28, 0.06f, 0.42f, 0.38, 620.0)
+                writePitchTone(0.24, 980.0, 1480.0, 6.2, 0.18f)
+            }
+            "glass_tap" -> {
+                writePitchTone(0.09, 2420.0, 2240.0, 11.5, 0.28f)
+                writePitchTone(0.06, 1180.0, 880.0, 10.0, 0.12f)
+            }
+            "camera_focus" -> {
+                writePitchTone(0.045, 1650.0, 2150.0, 9.5, 0.2f)
+                val off = (0.065 * SAMPLE_RATE).toInt()
+                val n = (0.055 * SAMPLE_RATE).toInt()
+                for (i in 0 until n) {
+                    val u = i.toDouble() / n
+                    val env = exp(-u * 9.0).toFloat()
+                    val s = sin(TWO_PI * 2480.0 * pitch * i / SAMPLE_RATE).toFloat() * env * 0.45f
+                    addSample(mix, totalFrames, start + off + i, s * gL, s * gR)
+                }
+            }
+            "bass_hit" -> {
+                writePitchTone(0.55, 155.0, 36.0, 5.2, 0.25f)
+                writeSweepNoise(0.14, 0.04f, 0.24f, 0.10, 0.0)
+            }
             "pop" -> writePitchTone(0.11, 210.0, 720.0, 7.2, 0.22f)
             "bubble" -> writePitchTone(0.15, 290.0, 920.0, 6.0, 0.32f)
             "click" -> {
@@ -381,12 +410,9 @@ object ProceduralAudioEngine {
                         }
                     }
                 }
-
                 val outIdx = codec.dequeueOutputBuffer(info, 10_000L)
                 when {
-                    outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        outputFormat = codec.outputFormat
-                    }
+                    outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> outputFormat = codec.outputFormat
                     outIdx >= 0 -> {
                         val outBuf = codec.getOutputBuffer(outIdx)
                         val isConfig = (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
@@ -399,9 +425,7 @@ object ProceduralAudioEngine {
                             lastPtsUs = safePts
                             packets += EncodedAudioPacket(bytes, safePts, 0)
                         }
-                        if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                            outputDone = true
-                        }
+                        if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) outputDone = true
                         codec.releaseOutputBuffer(outIdx, false)
                     }
                 }
@@ -410,7 +434,6 @@ object ProceduralAudioEngine {
             runCatching { codec.stop() }
             runCatching { codec.release() }
         }
-
         val finalFormat = outputFormat ?: throw IllegalStateException("Encoder AAC tidak menghasilkan format audio.")
         return EncodedAudioTrack(finalFormat, packets)
     }

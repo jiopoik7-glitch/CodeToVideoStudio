@@ -27,16 +27,16 @@ data class RenderSettings(
 
 data class StudioProject(
     val projectId: String = UUID.randomUUID().toString(),
-    val name: String = "Kinetic Studio Pro",
+    val name: String = "Liquid Glass Studio",
     val sourceBody: String = DEFAULT_SOURCE,
-    val seed: Int = 17,
+    val seed: Int = 26,
     val propsValues: Map<String, String> = emptyMap(),
     val renderSettings: RenderSettings = RenderSettings(),
     val createdAtEpochMs: Long = System.currentTimeMillis(),
     val updatedAtEpochMs: Long = System.currentTimeMillis()
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
-        put("schemaVersion", 2)
+        put("schemaVersion", 3)
         put("projectId", projectId)
         put("name", name)
         put("sourceBody", sourceBody)
@@ -69,7 +69,7 @@ data class StudioProject(
                 projectId = json.optString("projectId").ifBlank { UUID.randomUUID().toString() },
                 name = json.optString("name", "Imported Motion").take(80),
                 sourceBody = json.optString("sourceBody", DEFAULT_SOURCE).take(ProjectMetadataParser.MAX_SOURCE_CHARS),
-                seed = json.optInt("seed", 17),
+                seed = json.optInt("seed", 26),
                 propsValues = props,
                 renderSettings = RenderSettings(
                     longEdge = settings.optInt("longEdge", 1080).coerceIn(480, 2160),
@@ -88,101 +88,93 @@ data class StudioProject(
 
 const val DEFAULT_SOURCE = """/*<studio-meta>
 {
-  "schemaVersion": 2,
-  "title": "Kinetic Studio Pro",
+  "schemaVersion": 3,
+  "title": "Liquid Glass Studio",
   "defaultDurationSeconds": 5,
-  "seed": 17,
+  "seed": 26,
   "props": [
-    {"key":"eyebrow","label":"Eyebrow","type":"text","default":"STUDIO ENGINE V0.2"},
-    {"key":"title","label":"Judul Utama","type":"text","default":"MOTION TANPA KAKU"},
-    {"key":"highlight","label":"Kata Aksen","type":"text","default":"halus."},
-    {"key":"accent","label":"Warna Aksen","type":"color","default":"#23C483"}
+    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.3"},
+    {"key":"title","label":"Judul Utama","type":"text","default":"Desain kaca yang"},
+    {"key":"highlight","label":"Kata Aksen","type":"text","default":"hidup."},
+    {"key":"accent","label":"Warna Aksen","type":"color","default":"#DCE5F0"}
   ],
   "audio": {
-    "ambience": "warm_pad",
-    "ambienceVolume": 0.20,
+    "ambience": "ios_glass_chimes",
+    "ambienceVolume": 0.24,
     "cues": [
-      {"p": 0.02, "sfx": "whoosh", "gain": 0.75},
-      {"p": 0.22, "sfx": "pop", "gain": 0.80, "pitch": 1.05},
-      {"p": 0.45, "sfx": "click", "gain": 0.70},
-      {"p": 0.72, "sfx": "chime", "gain": 0.85}
+      {"p": 0.02, "sfx": "glass_slide", "gain": 0.80},
+      {"p": 0.24, "sfx": "glass_tap", "gain": 0.78, "pitch": 1.05},
+      {"p": 0.44, "sfx": "glass_tap", "gain": 0.78, "pitch": 1.18},
+      {"p": 0.76, "sfx": "chime", "gain": 0.88}
     ]
   }
 }
 </studio-meta>*/
 
-const accent = String(P.accent || "#23C483");
-const pad = Math.min(W, H) * 0.07;
+const accent = String(P.accent || "#DCE5F0");
+const pad = Math.min(W, H) * 0.068;
 const innerW = W - pad * 2;
-
-// Kamera 2.5D hidup dengan spring settle + organic drift
-const settle = spring({ frame, fps, config: { damping: 16, stiffness: 120 } });
-const drift = cam.shake(t, 6 * S, 0.8);
-const camState = {
+const settle = spring({ frame, fps, config: { damping: 16, stiffness: 125 } });
+const drift = cam.shake(t, 5 * S, 0.75);
+const cState = {
   x: drift.x,
   y: drift.y + interpolate(p, [0, 1], [-14 * S, 14 * S]),
-  zoom: interpolate(settle, [0, 1], [1.14, 1.0]) + p * 0.04,
+  zoom: interpolate(settle, [0, 1], [1.12, 1.0]) + p * 0.035,
   rot: drift.rot
 };
 
-ctx.fillStyle = "#06110B";
-ctx.fillRect(0, 0, W, H);
+ui.drawMeshBg(ctx, W, H, "#090C11", [
+  { x: 0.82, y: 0.16, r: 0.76, col: accent, a: 0.30 },
+  { x: 0.16, y: 0.84, r: 0.72, col: "#7A93B2", a: 0.24 },
+  { x: 0.50, y: 0.52, r: 0.58, col: "#FFFFFF", a: 0.08 }
+], t);
 
 ctx.save();
-cam.apply(ctx, camState, 0.35);
-ui.drawGlow(ctx, W * 0.82, H * 0.18, Math.min(W, H) * 0.65, accent, 0.28);
-ui.drawGlow(ctx, W * 0.18, H * 0.82, Math.min(W, H) * 0.55, "#F2B652", 0.16);
-ctx.restore();
+cam.apply(ctx, cState, 1.0);
 
+const pillP = fx.stagger(frame, 0, 4);
 ctx.save();
-cam.apply(ctx, camState, 1.0);
-
-const eyP = spring({ frame: frame - 2, fps, config: { damping: 15, stiffness: 180 } });
-ctx.save();
-ctx.globalAlpha = ui.clamp(eyP, 0, 1);
-ctx.fillStyle = accent;
-ctx.font = "800 " + Math.max(12, Math.round(24 * S)) + "px monospace, sans-serif";
-ctx.textAlign = "left";
-ctx.textBaseline = "top";
-ctx.fillText(String(P.eyebrow || "STUDIO ENGINE V0.2"), pad, H * 0.26 + (1 - eyP) * 20 * S);
+ctx.globalAlpha = ui.clamp(pillP, 0, 1);
+ctx.translate(0, (1 - pillP) * 20 * S);
+ui.drawPill(ctx, pad, H * 0.18, String(P.eyebrow || "RENDER VIDEO CODE V0.3"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
 ctx.restore();
 
-const fSize = Math.round(78 * S);
-const usedH = ui.drawRichText(ctx, [
-  { text: String(P.title || "MOTION TANPA KAKU") },
-  { text: String(P.highlight || "halus."), italic: true, color: accent }
-], pad, H * 0.32, innerW, fSize, fSize * 1.15, "#F5FAF7", ui.seg(p, 0.06, 0.45), "left");
+const fSize = Math.round(80 * S);
+const used = ui.drawRichText(ctx, [
+  { text: String(P.title || "Desain kaca yang") },
+  { text: String(P.highlight || "hidup."), italic: true, color: accent }
+], pad, H * 0.25, innerW, fSize, fSize * 1.14, "#FFFFFF", ui.seg(p, 0.06, 0.42), "left");
 
-// Kartu metrik dengan spring masuk
-const cardP = spring({ frame: frame - Math.round(fps * 0.8), fps, config: { damping: 14, stiffness: 150 } });
-const cardY = H * 0.32 + usedH + 46 * S;
-const cardH = 156 * S;
-ctx.save();
-ctx.globalAlpha = ui.clamp(cardP * 1.2, 0, 1);
-ctx.translate(0, (1 - cardP) * 60 * S);
-ctx.fillStyle = "rgba(255,255,255,0.055)";
-ctx.strokeStyle = ui.rgba(accent, 0.35);
-ctx.lineWidth = Math.max(1.5, 2 * S);
-ui.rrect(ctx, pad, cardY, innerW, cardH, 24 * S);
-ctx.fill();
-ctx.stroke();
+const cards = [
+  { title: "Liquid Glass Specular", sub: "Refleksi optik + spring physics", val: 0.96, lbl: "96%" },
+  { title: "20 Studio SFX Engine", sub: "Sinkron otomatis ke trek AAC MP4", val: 1.00, lbl: "100%" }
+];
+const cH = 172 * S;
+const cStart = H * 0.25 + used + 56 * S;
+for (let i = 0; i < cards.length; i++) {
+  const sp = fx.stagger(frame, i + 2, Math.round(fps * 0.26));
+  const cy = cStart + i * (cH + 26 * S);
+  ctx.save();
+  ctx.globalAlpha = ui.clamp(sp * 1.25, 0, 1);
+  ctx.translate(0, (1 - sp) * 62 * S);
+  ui.drawGlassCard(ctx, pad, cy, innerW, cH, 28 * S, { light: false });
 
-ctx.fillStyle = "#F5FAF7";
-ctx.font = "700 " + Math.max(15, Math.round(30 * S)) + "px sans-serif";
-ctx.textAlign = "left";
-ctx.textBaseline = "middle";
-ctx.fillText("Spring Physics + SFX AAC", pad + 30 * S, cardY + cardH * 0.38);
-ctx.fillStyle = "#97ACA0";
-ctx.font = "500 " + Math.max(12, Math.round(22 * S)) + "px sans-serif";
-ctx.fillText("Sinkron otomatis per frame di MP4", pad + 30 * S, cardY + cardH * 0.67);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#F7F9FC";
+  ctx.font = "700 " + Math.max(15, Math.round(32 * S)) + "px sans-serif";
+  ctx.fillText(cards[i].title, pad + 32 * S, cy + cH * 0.37, innerW - 180 * S);
 
-const ringP = ease.apple(ui.seg(p, 0.25, 0.85));
-ui.drawRing(ctx, pad + innerW - 76 * S, cardY + cardH * 0.5, 42 * S, ringP, accent, Math.round(ringP * 100) + "%", "rgba(255,255,255,0.1)", "#FFFFFF");
+  ctx.fillStyle = "rgba(220,230,242,0.72)";
+  ctx.font = "400 " + Math.max(12, Math.round(23 * S)) + "px sans-serif";
+  ctx.fillText(cards[i].sub, pad + 32 * S, cy + cH * 0.67, innerW - 180 * S);
+
+  const rp = ease.ios(ui.seg(p, 0.24 + i * 0.14, 0.86));
+  ui.drawRing(ctx, pad + innerW - 76 * S, cy + cH * 0.5, 44 * S, cards[i].val * rp, accent, cards[i].lbl, "rgba(255,255,255,0.12)", "#FFFFFF", 6 * S);
+  ctx.restore();
+}
 ctx.restore();
 
-ctx.restore();
-
-ui.drawGrain(ctx, W, H, rand, 80, 0.04);
-ctx.fillStyle = accent;
-ctx.fillRect(0, H - Math.max(4, 6 * S), W * p, Math.max(4, 6 * S));
+ui.drawGrain(ctx, W, H, rand, 70, 0.035);
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, "#FFFFFF", "rgba(255,255,255,0.14)");
 """

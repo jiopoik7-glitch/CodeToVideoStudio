@@ -1,6 +1,5 @@
 'use strict';
 
-// Aman dari crash strict-mode pada global read-only WebView
 ["fetch","XMLHttpRequest","WebSocket","importScripts","indexedDB","caches","BroadcastChannel","Worker","WebAssembly","setTimeout","setInterval","requestAnimationFrame"].forEach((k)=>{
   try { Object.defineProperty(self, k, { value: undefined, writable: false, configurable: true }); }
   catch (_) { try { self[k] = undefined; } catch (__) {} }
@@ -15,18 +14,13 @@ let currentHeight = 0;
 const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const lerpNum = (a, b, u) => a + (b - a) * u;
 
-// Solver Cubic-Bezier Newton-Raphson presisi (ala Apple Keynote / After Effects)
 function bezier(x1, y1, x2, y2) {
   return (x) => {
     const tc = clampNum(x, 0, 1);
     if (tc <= 0) return 0;
     if (tc >= 1) return 1;
-    const cx = 3 * x1;
-    const bx = 3 * (x2 - x1) - cx;
-    const ax = 1 - cx - bx;
-    const cy = 3 * y1;
-    const by = 3 * (y2 - y1) - cy;
-    const ay = 1 - cy - by;
+    const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
+    const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
     let u = tc;
     for (let i = 0; i < 6; i++) {
       const sx = ((ax * u + bx) * u + cx) * u - tc;
@@ -57,12 +51,10 @@ const ease = Object.freeze({
   apple: bezier(0.22, 1.0, 0.36, 1.0),
   snap: bezier(0.16, 1.0, 0.30, 1.0),
   whip: bezier(0.76, 0.0, 0.24, 1.0),
-  smooth: bezier(0.45, 0.0, 0.55, 1.0)
+  smooth: bezier(0.45, 0.0, 0.55, 1.0),
+  ios: bezier(0.25, 0.9, 0.3, 1.0)
 });
 
-// Fisika Pegas Analitik Deterministik (kompatibel gaya Remotion!)
-// Pemakaian: spring({ frame: frame - 10, fps, config: { damping: 14, stiffness: 150, mass: 1 } })
-// atau singkat: spring(frame - 10, fps, { damping: 14, stiffness: 150 })
 function spring(arg0, arg1, arg2) {
   let f = 0, fpsVal = 30, from = 0, to = 1, cfg = {};
   if (arg0 && typeof arg0 === "object") {
@@ -81,8 +73,6 @@ function spring(arg0, arg1, arg2) {
   const damping = Math.max(0.1, Number(cfg.damping !== undefined ? cfg.damping : 14));
   const stiffness = Math.max(1, Number(cfg.stiffness !== undefined ? cfg.stiffness : 140));
   const mass = Math.max(0.05, Number(cfg.mass !== undefined ? cfg.mass : 1));
-  const clampOver = !!cfg.overshootClamping;
-
   const w0 = Math.sqrt(stiffness / mass);
   const zeta = damping / (2 * Math.sqrt(stiffness * mass));
   let val;
@@ -95,21 +85,17 @@ function spring(arg0, arg1, arg2) {
     const r = w0 * Math.sqrt(zeta * zeta - 1);
     val = 1 - Math.exp(-zeta * w0 * tSec) * (Math.cosh(r * tSec) + ((zeta * w0) / r) * Math.sinh(r * tSec));
   }
-  if (clampOver) val = clampNum(val, 0, 1);
+  if (cfg.overshootClamping) val = clampNum(val, 0, 1);
   if (Math.abs(1 - val) < 0.0005 && tSec > 0.25) val = 1;
   return from + (to - from) * val;
 }
 
-// Interpolasi Timeline gaya Remotion
 function interpolate(input, inputRange, outputRange, opts) {
-  if (!Array.isArray(inputRange) || !Array.isArray(outputRange) || inputRange.length < 2 || inputRange.length !== outputRange.length) {
-    return input;
-  }
+  if (!Array.isArray(inputRange) || !Array.isArray(outputRange) || inputRange.length < 2 || inputRange.length !== outputRange.length) return input;
   const o = opts || {};
   const exL = o.extrapolateLeft || "clamp";
   const exR = o.extrapolateRight || "clamp";
   const fn = typeof o.easing === "function" ? o.easing : null;
-
   let idx = 0;
   for (let i = 1; i < inputRange.length - 1; i++) {
     if (input >= inputRange[i]) idx = i;
@@ -126,11 +112,10 @@ function interpolate(input, inputRange, outputRange, opts) {
 function parseHexRGB(hex, fb) {
   const clean = String(hex || "").trim().replace(/^#/, "");
   const full = clean.length === 3 ? clean[0]+clean[0]+clean[1]+clean[1]+clean[2]+clean[2] : clean;
-  if (!/^[0-9a-fA-F]{6}$/.test(full)) return fb || [102, 227, 209];
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return fb || [235, 240, 246];
   return [parseInt(full.slice(0,2),16), parseInt(full.slice(2,4),16), parseInt(full.slice(4,6),16)];
 }
 
-// Helper Kamera 2.5D & Parallax
 function makeCameraApi(W, H) {
   return Object.freeze({
     apply(c, state, depth) {
@@ -153,8 +138,65 @@ function makeCameraApi(W, H) {
   });
 }
 
-// Helper UI Motion Graphic Studio
+function makeFxApi(fps) {
+  return Object.freeze({
+    stagger(frameVal, index, delayFrames, cfg) {
+      const df = delayFrames !== undefined ? delayFrames : Math.max(3, Math.round(fps * 0.12));
+      return spring({ frame: frameVal - index * df, fps, config: cfg || { damping: 14, stiffness: 160 } });
+    },
+    scene(pVal, start, end) {
+      const sp = clampNum((pVal - start) / Math.max(0.0001, end - start), 0, 1);
+      return {
+        p: sp,
+        in: ease.snap(clampNum(sp / 0.18, 0, 1)),
+        out: 1 - ease.whip(clampNum((sp - 0.85) / 0.15, 0, 1)),
+        active: pVal >= start && pVal <= end
+      };
+    }
+  });
+}
+
+// Micro 3D Engine bawaan untuk visual 3D sinematik ringkas
+const d3 = Object.freeze({
+  rotX(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0], v[1]*c - v[2]*s, v[1]*s + v[2]*c]; },
+  rotY(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0]*c + v[2]*s, v[1], -v[0]*s + v[2]*c]; },
+  rotZ(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0]*c - v[1]*s, v[0]*s + v[1]*c, v[2]]; },
+  norm(a) { const m = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/m, a[1]/m, a[2]/m]; },
+  dot(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; },
+  cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; },
+  sub(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; },
+  camera(eye, target, fovRad, W, H, cyRatio) {
+    const fwd = d3.norm(d3.sub(target, eye));
+    const right = d3.norm(d3.cross(fwd, [0, 1, 0]));
+    const up = d3.cross(right, fwd);
+    const focal = (Math.min(W, H) * 0.9) / Math.tan((fovRad || 0.72) * 0.5);
+    const cx = W * 0.5, cy = H * (cyRatio !== undefined ? cyRatio : 0.5);
+    return (pt) => {
+      const d = d3.sub(pt, eye);
+      const px = d3.dot(d, right), py = d3.dot(d, up), pz = d3.dot(d, fwd);
+      if (pz < 0.25) return null;
+      const k = focal / pz;
+      return [cx + px * k, cy - py * k, pz];
+    };
+  }
+});
+
 function makeUiApi(S) {
+  const rrectFn = (c, x, y, w, h, r) => {
+    const rr = Math.max(0, Math.min(r || 0, w * 0.5, h * 0.5));
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.lineTo(x + w - rr, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + rr);
+    c.lineTo(x + w, y + h - rr);
+    c.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    c.lineTo(x + rr, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - rr);
+    c.lineTo(x, y + rr);
+    c.quadraticCurveTo(x, y, x + rr, y);
+    c.closePath();
+  };
+
   return Object.freeze({
     clamp: clampNum,
     lerp: lerpNum,
@@ -165,24 +207,11 @@ function makeUiApi(S) {
     },
     mixColor(h1, h2, u) {
       const a = parseHexRGB(h1, [15, 23, 42]);
-      const b = parseHexRGB(h2, [102, 227, 209]);
+      const b = parseHexRGB(h2, [235, 240, 246]);
       const k = clampNum(u, 0, 1);
       return "rgb(" + Math.round(lerpNum(a[0],b[0],k)) + "," + Math.round(lerpNum(a[1],b[1],k)) + "," + Math.round(lerpNum(a[2],b[2],k)) + ")";
     },
-    rrect(c, x, y, w, h, r) {
-      const rr = Math.max(0, Math.min(r || 0, w * 0.5, h * 0.5));
-      c.beginPath();
-      c.moveTo(x + rr, y);
-      c.lineTo(x + w - rr, y);
-      c.quadraticCurveTo(x + w, y, x + w, y + rr);
-      c.lineTo(x + w, y + h - rr);
-      c.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
-      c.lineTo(x + rr, y + h);
-      c.quadraticCurveTo(x, y + h, x, y + h - rr);
-      c.lineTo(x, y + rr);
-      c.quadraticCurveTo(x, y, x + rr, y);
-      c.closePath();
-    },
+    rrect: rrectFn,
     wrapText(c, text, maxW) {
       const words = String(text || "").trim().split(/\s+/).filter(Boolean);
       if (!words.length) return [""];
@@ -198,7 +227,7 @@ function makeUiApi(S) {
     },
     drawGlow(c, x, y, r, hex, alpha) {
       const g = c.createRadialGradient(x, y, 0, x, y, r);
-      const rgb = parseHexRGB(hex, [102, 227, 209]);
+      const rgb = parseHexRGB(hex, [220, 230, 242]);
       g.addColorStop(0, "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + "," + clampNum(alpha, 0, 1) + ")");
       g.addColorStop(0.55, "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + "," + clampNum(alpha * 0.25, 0, 1) + ")");
       g.addColorStop(1, "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ",0)");
@@ -206,6 +235,104 @@ function makeUiApi(S) {
       c.beginPath();
       c.arc(x, y, r, 0, Math.PI * 2);
       c.fill();
+    },
+    // Latar Mesh Fluid ala iOS Wallpaper
+    drawMeshBg(c, W, H, baseHex, orbs, tSec) {
+      c.fillStyle = baseHex || "#0B0E14";
+      c.fillRect(0, 0, W, H);
+      const list = orbs || [
+        { x: 0.82, y: 0.18, r: 0.72, col: "#9EB6D4", a: 0.28 },
+        { x: 0.16, y: 0.80, r: 0.68, col: "#E5EAF0", a: 0.18 }
+      ];
+      const sh = Math.min(W, H);
+      for (let i = 0; i < list.length; i++) {
+        const o = list[i];
+        const ox = W * o.x + Math.sin((tSec || 0) * (0.6 + i * 0.2) + i) * 38 * S;
+        const oy = H * o.y + Math.cos((tSec || 0) * (0.5 + i * 0.25) + i) * 32 * S;
+        const g = c.createRadialGradient(ox, oy, 0, ox, oy, sh * (o.r || 0.65));
+        const rgb = parseHexRGB(o.col, [200, 212, 226]);
+        g.addColorStop(0, "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + "," + clampNum(o.a || 0.24, 0, 1) + ")");
+        g.addColorStop(0.58, "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + "," + clampNum((o.a || 0.24) * 0.22, 0, 1) + ")");
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = g;
+        c.fillRect(0, 0, W, H);
+      }
+    },
+    // Kartu iOS Liquid Glass dengan pantulan cermin atas & specular rim
+    drawGlassCard(c, x, y, w, h, r, opts) {
+      const o = opts || {};
+      const light = !!o.light;
+      const rad = r !== undefined ? r : 28 * S;
+      c.save();
+      c.shadowColor = light ? "rgba(18, 26, 36, 0.12)" : "rgba(0, 0, 0, 0.36)";
+      c.shadowBlur = 34 * S;
+      c.shadowOffsetY = 14 * S;
+      const bg = c.createLinearGradient(x, y, x, y + h);
+      if (light) {
+        bg.addColorStop(0, "rgba(255, 255, 255, 0.78)");
+        bg.addColorStop(1, "rgba(244, 247, 252, 0.56)");
+      } else {
+        bg.addColorStop(0, "rgba(255, 255, 255, 0.13)");
+        bg.addColorStop(0.5, "rgba(255, 255, 255, 0.055)");
+        bg.addColorStop(1, "rgba(255, 255, 255, 0.09)");
+      }
+      c.fillStyle = bg;
+      rrectFn(c, x, y, w, h, rad);
+      c.fill();
+      c.restore();
+
+      // Pantulan kaca diagonal lembut di dalam kartu
+      c.save();
+      rrectFn(c, x, y, w, h, rad);
+      c.clip();
+      const sheen = c.createLinearGradient(x, y, x + w * 0.5, y + h * 0.55);
+      sheen.addColorStop(0, light ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.16)");
+      sheen.addColorStop(1, "rgba(255,255,255,0)");
+      c.fillStyle = sheen;
+      c.fillRect(x, y, w, h * 0.52);
+      c.restore();
+
+      // Rim border cermin specular
+      c.save();
+      const rim = c.createLinearGradient(x, y, x + w, y + h);
+      rim.addColorStop(0, light ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.42)");
+      rim.addColorStop(0.5, light ? "rgba(180,192,208,0.28)" : "rgba(255,255,255,0.10)");
+      rim.addColorStop(1, light ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.28)");
+      c.strokeStyle = rim;
+      c.lineWidth = Math.max(1.2, 2.0 * S);
+      rrectFn(c, x, y, w, h, rad);
+      c.stroke();
+      c.restore();
+    },
+    drawPill(c, x, y, label, bgCol, txtCol, fontSize) {
+      const f = fontSize || Math.max(12, Math.round(22 * S));
+      c.save();
+      c.font = "700 " + f + "px sans-serif";
+      const pw = c.measureText(String(label)).width + 32 * S;
+      const ph = f + 18 * S;
+      c.fillStyle = bgCol || "rgba(255,255,255,0.14)";
+      rrectFn(c, x, y, pw, ph, ph * 0.5);
+      c.fill();
+      c.strokeStyle = "rgba(255,255,255,0.28)";
+      c.lineWidth = Math.max(1, 1.4 * S);
+      c.stroke();
+      c.fillStyle = txtCol || "#FFFFFF";
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.fillText(String(label), x + pw * 0.5, y + ph * 0.52);
+      c.restore();
+      return { w: pw, h: ph };
+    },
+    drawProgressBar(c, x, y, w, h, frac, col, trackCol) {
+      c.save();
+      c.fillStyle = trackCol || "rgba(255,255,255,0.12)";
+      rrectFn(c, x, y, w, h, h * 0.5);
+      c.fill();
+      const fw = Math.max(h, w * clampNum(frac, 0, 1));
+      c.fillStyle = col || "#FFFFFF";
+      rrectFn(c, x, y, fw, h, h * 0.5);
+      c.fill();
+      c.restore();
     },
     drawRing(c, cx, cy, rad, frac, col, label, bgCol, txtCol, lw) {
       c.save();
@@ -343,16 +470,17 @@ function render(message) {
   const rand = (index) => seededRandom(message.seed | 0, index | 0);
   const cam = makeCameraApi(W, H);
   const ui = makeUiApi(S);
+  const fx = makeFxApi(fps);
 
   const body = new Function(
     "ctx", "W", "H", "S", "t", "D", "p", "frame", "fps", "P", "ease", "rand",
-    "spring", "interpolate", "bezier", "cam", "ui",
+    "spring", "interpolate", "bezier", "cam", "ui", "fx", "d3",
     "globalThis", "self", "fetch", "XMLHttpRequest", "WebSocket", "importScripts",
     "indexedDB", "caches", "BroadcastChannel", "Worker", "WebAssembly", "setTimeout",
     "setInterval", "requestAnimationFrame", "document", "window",
     '"use strict";\n' + message.sourceBody
   );
-  body(ctx, W, H, S, t, D, p, frame, fps, P, ease, rand, spring, interpolate, bezier, cam, ui);
+  body(ctx, W, H, S, t, D, p, frame, fps, P, ease, rand, spring, interpolate, bezier, cam, ui, fx, d3);
 
   if (message.mode === "preview") {
     const bitmap = canvas.transferToImageBitmap();

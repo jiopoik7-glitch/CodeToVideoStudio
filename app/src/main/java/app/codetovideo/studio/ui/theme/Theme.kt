@@ -5,21 +5,22 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val StudioColors = darkColorScheme(
-    primary = Color(0xFF66E3D1),
-    onPrimary = Color(0xFF06211F),
-    secondary = Color(0xFF9EAFFF),
-    onSecondary = Color(0xFF141D46),
-    background = Color(0xFF090D19),
-    onBackground = Color(0xFFF3F5FB),
-    surface = Color(0xFF111827),
-    onSurface = Color(0xFFF3F5FB),
-    surfaceVariant = Color(0xFF202B3D),
-    onSurfaceVariant = Color(0xFFBAC5D8),
-    error = Color(0xFFFF8B9A)
+private val LiquidGlassColors = darkColorScheme(
+    primary = Color(0xFFF2F5F9),
+    onPrimary = Color(0xFF0E1218),
+    secondary = Color(0xFFB5C0CE),
+    onSecondary = Color(0xFF12171F),
+    background = Color(0xFF0A0D12),
+    onBackground = Color(0xFFF5F7FA),
+    surface = Color(0xFF141922),
+    onSurface = Color(0xFFF5F7FA),
+    surfaceVariant = Color(0xFF1E2532),
+    onSurfaceVariant = Color(0xFFA9B4C3),
+    outline = Color(0x40FFFFFF),
+    error = Color(0xFFFF6B7A)
 )
 
 @Composable
 fun StudioTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = StudioColors, content = content)
+    MaterialTheme(colorScheme = LiquidGlassColors, content = content)
 }
