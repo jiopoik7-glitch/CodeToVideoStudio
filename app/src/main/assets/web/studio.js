@@ -61,7 +61,7 @@
   window.renderPreview = (payload) => {
     if (!worker) { showError('OffscreenCanvas Worker is not available on this WebView.'); return false; }
     if (previewWatchdog) clearTimeout(previewWatchdog);
-    previewWatchdog = setTimeout(() => { showError('Preview frame timeout. Worker telah dihentikan.'); window.abortWorker(); }, 1800);
+    previewWatchdog = setTimeout(() => { showError('Preview frame timeout. Worker telah dihentikan.'); window.abortWorker(); }, 4500);
     worker.postMessage({ ...payload, mode: 'preview' });
     return true;
   };

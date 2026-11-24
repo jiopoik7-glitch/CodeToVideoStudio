@@ -16,26 +16,29 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import kotlin.math.roundToInt
 
-/** Hardware AVC encoder. One RGBA frame is uploaded and drained at a time. */
+/** Hardware AVC encoder with optional interleaved AAC audio muxing. */
 class MediaCodecSurfaceEncoder(
     outputFd: FileDescriptor,
     private val width: Int,
     private val height: Int,
     private val fps: Int,
-    private val quality: String
+    private val quality: String,
+    private val audioTrack: EncodedAudioTrack? = null
 ) {
     private val codecInfo: MediaCodecInfo = chooseCodec(width, height, fps)
     private val codec: MediaCodec
     private val muxer: MediaMuxer
     private val inputSurface: Surface
     private val gl: EncoderEglRenderer
-    private var trackIndex = -1
+    private var videoTrackIndex = -1
+    private var audioTrackIndex = -1
+    private var nextAudioPacket = 0
     private var muxerStarted = false
     private var released = false
 
     init {
         val caps = codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).videoCapabilities
-        val multiplier = when (quality) { "low" -> 0.65; "high" -> 1.5; "ultra" -> 2.0; else -> 1.0 }
+        val multiplier = when (quality) { "low" -> 0.65; "high" -> 1.5; "ultra" -> 2.1; else -> 1.0 }
         val wanted = (width.toLong() * height * fps * 0.08 * multiplier).roundToInt()
         val bitRate = wanted.coerceIn(caps.bitrateRange.lower, caps.bitrateRange.upper)
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
@@ -58,12 +61,14 @@ class MediaCodecSurfaceEncoder(
         val ptsNs = frameIndex.toLong() * 1_000_000_000L / fps
         gl.draw(rgba, ptsNs)
         drainEncoder(waitForEnd = false)
+        writeAudioUpTo(ptsNs / 1_000L)
     }
 
     fun finish() {
         if (released) return
         codec.signalEndOfInputStream()
         drainEncoder(waitForEnd = true)
+        writeAudioUpTo(Long.MAX_VALUE)
         release()
     }
 
@@ -76,6 +81,23 @@ class MediaCodecSurfaceEncoder(
         runCatching { inputSurface.release() }
         if (muxerStarted) runCatching { muxer.stop() }
         runCatching { muxer.release() }
+    }
+
+    private fun writeAudioUpTo(limitPtsUs: Long) {
+        val track = audioTrack ?: return
+        if (!muxerStarted || audioTrackIndex < 0) return
+        val info = MediaCodec.BufferInfo()
+        while (nextAudioPacket < track.packets.size) {
+            val pkt = track.packets[nextAudioPacket]
+            if (pkt.presentationTimeUs > limitPtsUs) break
+            val buf = ByteBuffer.wrap(pkt.data)
+            info.offset = 0
+            info.size = pkt.data.size
+            info.presentationTimeUs = pkt.presentationTimeUs
+            info.flags = 0
+            muxer.writeSampleData(audioTrackIndex, buf, info)
+            nextAudioPacket++
+        }
     }
 
     private fun drainEncoder(waitForEnd: Boolean) {
@@ -93,7 +115,10 @@ class MediaCodecSurfaceEncoder(
                 }
                 outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                     check(!muxerStarted) { "Format encoder berubah lebih dari sekali." }
-                    trackIndex = muxer.addTrack(codec.outputFormat)
+                    videoTrackIndex = muxer.addTrack(codec.outputFormat)
+                    if (audioTrack != null) {
+                        audioTrackIndex = muxer.addTrack(audioTrack.format)
+                    }
                     muxer.start()
                     muxerStarted = true
                 }
@@ -102,10 +127,10 @@ class MediaCodecSurfaceEncoder(
                         ?: throw IllegalStateException("Output buffer encoder tidak tersedia.")
                     if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
                     if (info.size > 0) {
-                        check(muxerStarted && trackIndex >= 0) { "Muxer belum siap menerima sample." }
+                        check(muxerStarted && videoTrackIndex >= 0) { "Muxer belum siap menerima sample." }
                         output.position(info.offset)
                         output.limit(info.offset + info.size)
-                        muxer.writeSampleData(trackIndex, output, info)
+                        muxer.writeSampleData(videoTrackIndex, output, info)
                     }
                     sawEos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                     codec.releaseOutputBuffer(outputIndex, false)
@@ -134,7 +159,6 @@ class MediaCodecSurfaceEncoder(
     }
 }
 
-/** GLES2 blitter into the MediaCodec input Surface; timestamps are nanoseconds. */
 private class EncoderEglRenderer(private val inputSurface: Surface, private val width: Int, private val height: Int) {
     private val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
     private val config: android.opengl.EGLConfig
@@ -156,7 +180,7 @@ private class EncoderEglRenderer(private val inputSurface: Surface, private val 
         val attribs = intArrayOf(
             EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8,
             EGL14.EGL_ALPHA_SIZE, 8, EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-            0x3142, 1, // EGL_RECORDABLE_ANDROID
+            0x3142, 1,
             EGL14.EGL_NONE
         )
         val configs = arrayOfNulls<android.opengl.EGLConfig>(1)

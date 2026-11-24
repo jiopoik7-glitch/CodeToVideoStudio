@@ -2,40 +2,40 @@ package app.codetovideo.studio.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.MediaController
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
@@ -48,14 +48,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -63,18 +61,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import android.widget.VideoView
-import android.widget.MediaController
 import app.codetovideo.studio.MainActivity
-import app.codetovideo.studio.core.PropType
 import app.codetovideo.studio.core.ProjectMetadataParser
-import app.codetovideo.studio.core.RenderSettings
+import app.codetovideo.studio.core.PropType
 import app.codetovideo.studio.core.StudioMetadata
 import app.codetovideo.studio.core.StudioProject
 import app.codetovideo.studio.storage.GalleryRepository
 import app.codetovideo.studio.storage.GalleryVideo
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private enum class StudioTab(val label: String, val symbol: String) {
@@ -131,7 +126,7 @@ fun StudioApp(activity: MainActivity) {
                 activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> input.copyTo(output) }
                     ?: throw IllegalStateException("File tujuan tidak bisa dibuka.")
             }
-        }.onSuccess { Toast.makeText(activity, "Dokumentasi disimpan", Toast.LENGTH_SHORT).show() }
+        }.onSuccess { Toast.makeText(activity, "Dokumentasi v0.2 disimpan", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(activity, it.message ?: "Gagal menyimpan Docs", Toast.LENGTH_LONG).show() }
     }
 
@@ -158,7 +153,7 @@ fun StudioApp(activity: MainActivity) {
                         renderMessage = renderMessage,
                         onPreview = { activity.canvasRuntime.preview(project, it) },
                         onRender = {
-                            renderMessage = "Menyiapkan encoder dan file MP4…"
+                            renderMessage = "Mensintesis audio SFX & menyiapkan encoder MP4…"
                             isRendering = true
                             renderDone = 0
                             activity.renderController.render(
@@ -170,7 +165,7 @@ fun StudioApp(activity: MainActivity) {
                                 },
                                 onComplete = { result ->
                                     isRendering = false
-                                    result.onSuccess { uri ->
+                                    result.onSuccess {
                                         renderMessage = "MP4 berhasil divalidasi dan disimpan ke Movies/CodeToVideoStudio"
                                         refreshGallery++
                                         Toast.makeText(activity, "Video tersimpan di Galeri", Toast.LENGTH_LONG).show()
@@ -194,8 +189,10 @@ fun StudioApp(activity: MainActivity) {
                             }
                             activity.startActivity(Intent.createChooser(intent, "Bagikan video"))
                         },
-                        onDelete = { video -> runCatching { GalleryRepository(activity).delete(video.uri); refreshGallery++ }
-                            .onFailure { Toast.makeText(activity, it.message ?: "Hapus gagal", Toast.LENGTH_LONG).show() } }
+                        onDelete = { video ->
+                            runCatching { GalleryRepository(activity).delete(video.uri); refreshGallery++ }
+                                .onFailure { Toast.makeText(activity, it.message ?: "Hapus gagal", Toast.LENGTH_LONG).show() }
+                        }
                     )
                     StudioTab.PROJECTS -> ProjectsScreen(
                         activity = activity,
@@ -217,7 +214,7 @@ fun StudioApp(activity: MainActivity) {
                         onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
                         onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
                     )
-                    StudioTab.DOCS -> DocsScreen(activity = activity, onSave = { saveDocs.launch("code-to-video-skill.md") })
+                    StudioTab.DOCS -> DocsScreen(activity = activity, onSave = { saveDocs.launch("code-to-video-skill-v0.2.md") })
                 }
             }
             NavigationBar(containerColor = Color(0xFF0E1524), tonalElevation = 0.dp) {
@@ -248,7 +245,7 @@ private fun TopHeader(projectName: String, status: String, webReady: Boolean) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(7.dp).background(if (webReady) Color(0xFF66E3D1) else Color(0xFFFFC36B), CircleShape))
                 Spacer(Modifier.width(6.dp))
-                Text("LOCAL · OFFLINE", color = Color(0xFF66E3D1), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                Text("V0.2 · SFX ENGINE", color = Color(0xFF66E3D1), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
             }
             Text(status, color = Color(0xFF71809F), fontSize = 9.sp)
         }
@@ -290,12 +287,12 @@ private fun EditorScreen(
     val parsed = remember(project.sourceBody) { runCatching { ProjectMetadataParser.parse(project.sourceBody) } }
     var showTemplates by remember { mutableStateOf(false) }
     PageColumn {
-        SectionTitle("Editor", "Tulis JavaScript Canvas 2D. Props dibaca dari metadata JSON statis.")
+        SectionTitle("Editor", "Engine v0.2: spring(), interpolate(), cam, ui & SFX offline.")
         Panel {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("SOURCE.JS", color = Color(0xFF66E3D1), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)
-                    Text("${project.sourceBody.length} / 65.536 karakter", color = Color(0xFF8291AC), fontSize = 10.sp)
+                    Text("${project.sourceBody.length} / 262.144 karakter", color = Color(0xFF8291AC), fontSize = 10.sp)
                 }
                 TextButtonSmall("Templates", onClick = { showTemplates = true })
                 TextButtonSmall("Reset", onClick = { onProjectChange(project.copy(sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap())) })
@@ -303,7 +300,7 @@ private fun EditorScreen(
             Box(Modifier.fillMaxWidth().height(330.dp).background(Color(0xFF080E19), RoundedCornerShape(12.dp)).padding(12.dp)) {
                 BasicTextField(
                     value = project.sourceBody,
-                    onValueChange = { value -> if (value.length <= 65_536) onProjectChange(project.copy(sourceBody = value)) },
+                    onValueChange = { value -> if (value.length <= ProjectMetadataParser.MAX_SOURCE_CHARS) onProjectChange(project.copy(sourceBody = value)) },
                     modifier = Modifier.fillMaxSize(),
                     textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFFD5E0F4), fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 16.sp),
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF66E3D1))
@@ -321,19 +318,37 @@ private fun EditorScreen(
             }
         } else {
             val metadata = parsed.getOrThrow()
+            if (metadata.audio.cues.isNotEmpty() || metadata.audio.ambience != "none") {
+                Panel {
+                    Text("AUDIO & SFX DETECTED", color = Color(0xFF66E3D1), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.sp)
+                    Text(
+                        "Ambience: ${metadata.audio.ambience} · ${metadata.audio.cues.size} SFX cues siap di-mux ke MP4.",
+                        color = Color(0xFFDCE5F6), fontSize = 12.sp
+                    )
+                }
+            }
             PropsPanel(metadata = metadata, values = project.propsValues, onChange = { onProjectChange(project.copy(propsValues = it)) })
         }
-        Text("Kode dijalankan di Dedicated Worker tanpa DOM. Gunakan t, p, frame, ease, dan rand(index) untuk animasi deterministik.", color = Color(0xFF75839E), fontSize = 11.sp)
+        Text("Worker v0.2 mendukung spring(), interpolate(), bezier(), cam, ui, dan 16 SFX studio tanpa internet.", color = Color(0xFF75839E), fontSize = 11.sp)
     }
     if (showTemplates) {
         AlertDialog(
             onDismissRequest = { showTemplates = false },
-            title = { Text("Pilih template") },
+            title = { Text("Pilih template v0.2") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { onProjectChange(project.copy(name = "Kinetic Title", sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap())); showTemplates = false }) { Text("Kinetic Title · Typography") }
-                    TextButton(onClick = { onProjectChange(project.copy(name = "Orbit Geometry", sourceBody = ORBIT_TEMPLATE, propsValues = emptyMap())); showTemplates = false }) { Text("Orbit Geometry · Shapes") }
-                    TextButton(onClick = { onProjectChange(project.copy(name = "Progress Counter", sourceBody = COUNTER_TEMPLATE, propsValues = emptyMap())); showTemplates = false }) { Text("Progress Counter · Data") }
+                    TextButton(onClick = {
+                        onProjectChange(project.copy(name = "Kinetic Studio Pro", sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 5)))
+                        showTemplates = false
+                    }) { Text("Kinetic Studio Pro · Spring + SFX (5s)") }
+                    TextButton(onClick = {
+                        onProjectChange(project.copy(name = "Editorial Whip Cards", sourceBody = EDITORIAL_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        showTemplates = false
+                    }) { Text("Editorial Whip Cards · Keynote + SFX (10s)") }
+                    TextButton(onClick = {
+                        onProjectChange(project.copy(name = "Data Counter Studio", sourceBody = COUNTER_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 5)))
+                        showTemplates = false
+                    }) { Text("Data Counter Studio · Tick + Chime (5s)") }
                 }
             },
             confirmButton = { TextButton(onClick = { showTemplates = false }) { Text("Tutup") } }
@@ -341,36 +356,171 @@ private fun EditorScreen(
     }
 }
 
-private val ORBIT_TEMPLATE = """/*<studio-meta>
-{"schemaVersion":1,"title":"Orbit Geometry","defaultDurationSeconds":5,"seed":23,"props":[{"key":"accent","label":"Accent","type":"color","default":"#9EAFFF"}]}
-</studio-meta>*/
-ctx.fillStyle = "#090D19"; ctx.fillRect(0,0,W,H);
-const cx=W/2, cy=H/2, radius=Math.min(W,H)*0.22;
-for(let i=0;i<7;i++){
-  const a=t*0.8+i*Math.PI*2/7;
-  const x=cx+Math.cos(a)*radius, y=cy+Math.sin(a)*radius;
-  ctx.beginPath(); ctx.arc(x,y,Math.max(9,18*S),0,Math.PI*2);
-  ctx.fillStyle=P.accent||"#9EAFFF"; ctx.globalAlpha=0.35+0.65*ease.outCubic(p);
-  ctx.fill(); ctx.globalAlpha=1;
+private val EDITORIAL_TEMPLATE = """/*<studio-meta>
+{
+  "schemaVersion": 2,
+  "title": "Editorial Whip Cards",
+  "defaultDurationSeconds": 10,
+  "seed": 42,
+  "props": [
+    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
+    {"key":"headline","label":"Headline","type":"text","default":"Rawat pelan, tumbuh"},
+    {"key":"accentWord","label":"Kata Aksen","type":"text","default":"maksimal."},
+    {"key":"accent","label":"Warna Aksen","type":"color","default":"#239B56"}
+  ],
+  "audio": {
+    "ambience": "forest_air",
+    "ambienceVolume": 0.24,
+    "cues": [
+      {"p": 0.02, "sfx": "whoosh", "gain": 0.75},
+      {"p": 0.14, "sfx": "pop", "gain": 0.72, "pitch": 1.0},
+      {"p": 0.22, "sfx": "pop", "gain": 0.72, "pitch": 1.12},
+      {"p": 0.48, "sfx": "whip", "gain": 0.90},
+      {"p": 0.62, "sfx": "sparkle", "gain": 0.75},
+      {"p": 0.80, "sfx": "bloom", "gain": 0.88}
+    ]
+  }
 }
-ctx.beginPath(); ctx.arc(cx,cy,Math.max(22,48*S),0,Math.PI*2);
-ctx.fillStyle="#F5F7FF"; ctx.fill();
-ctx.textAlign="center"; ctx.fillStyle="#F5F7FF"; ctx.font=`700 ${'$'}{Math.max(18,32*S)}px sans-serif`;
-ctx.fillText("ORBIT / 07",cx,cy+Math.min(H,W)*0.36);
+</studio-meta>*/
+
+const accent = String(P.accent || "#239B56");
+const pad = Math.min(W, H) * 0.068;
+const innerW = W - pad * 2;
+const whip = ease.whip(ui.seg(p, 0.46, 0.56));
+
+function drawLightScene(sp, outU) {
+  const cState = { x: outU * W * 1.04, y: interpolate(sp, [0, 1], [-16 * S, 16 * S]), zoom: interpolate(sp, [0, 0.3], [1.1, 1.0], { easing: ease.snap }), rot: -outU * 0.03 };
+  ctx.fillStyle = "#F6F6F1";
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  cam.apply(ctx, cState, 0.35);
+  ui.drawGlow(ctx, W * 0.85, H * 0.16, Math.min(W, H) * 0.65, accent, 0.26);
+  ui.drawGlow(ctx, W * 0.14, H * 0.85, Math.min(W, H) * 0.60, "#F2C14E", 0.26);
+  ctx.restore();
+
+  ctx.save();
+  cam.apply(ctx, cState, 1.0);
+  const fSize = Math.round(76 * S);
+  const used = ui.drawRichText(ctx, [
+    { text: String(P.headline || "Rawat pelan, tumbuh") },
+    { text: String(P.accentWord || "maksimal."), italic: true, color: accent }
+  ], pad, H * 0.16, innerW, fSize, fSize * 1.15, "#111814", ui.seg(sp, 0.04, 0.42), "left");
+
+  const items = [
+    { t: "Cahaya & sirkulasi udara", v: 0.92, l: "92%" },
+    { t: "Nutrisi akar seimbang", v: 0.86, l: "86%" }
+  ];
+  const cH = 175 * S;
+  const startY = H * 0.16 + used + 70 * S;
+  for (let i = 0; i < items.length; i++) {
+    const spCard = spring({ frame: frame - Math.round(fps * (0.9 + i * 0.45)), fps, config: { damping: 14, stiffness: 150 } });
+    const cy = startY + i * (cH + 26 * S);
+    ctx.save();
+    ctx.globalAlpha = ui.clamp(spCard * 1.3, 0, 1);
+    ctx.translate((1 - spCard) * 110 * S, 0);
+    ctx.fillStyle = "#FFFFFF";
+    ui.rrect(ctx, pad, cy, innerW, cH, 24 * S);
+    ctx.fill();
+    ctx.fillStyle = "#111814";
+    ctx.font = "800 " + Math.max(15, Math.round(33 * S)) + "px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(items[i].t, pad + 32 * S, cy + cH * 0.5, innerW - 170 * S);
+    ui.drawRing(ctx, pad + innerW - 76 * S, cy + cH * 0.5, 44 * S, items[i].v * ease.apple(ui.seg(sp, 0.25 + i * 0.12, 0.85)), accent, items[i].l, "rgba(17,24,20,0.08)", "#111814");
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawDarkFinale(sp, inU) {
+  const cState = { x: -(1 - inU) * W * 1.04, y: 0, zoom: interpolate(sp, [0, 1], [1.08, 1.0], { easing: ease.apple }), rot: (1 - inU) * 0.03 };
+  ctx.fillStyle = "#06130C";
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  cam.apply(ctx, cState, 0.35);
+  ui.drawGlow(ctx, W * 0.5, H * 0.44, Math.min(W, H) * 0.65, accent, 0.26);
+  ctx.restore();
+
+  ctx.save();
+  cam.apply(ctx, cState, 1.0);
+  const ringP = ease.snap(ui.seg(sp, 0.06, 0.65));
+  ui.drawRing(ctx, W * 0.5, H * 0.40, 108 * S, ringP, accent, Math.round(ringP * 100) + "%", "rgba(255,255,255,0.10)", "#F5FAF7", 10 * S);
+  const bSize = Math.round(86 * S);
+  ui.drawRichText(ctx, [
+    { text: String(P.brand || "Seflorner") },
+    { text: ".", color: accent }
+  ], W * 0.5, H * 0.57, innerW, bSize, bSize * 1.15, "#F5FAF7", ui.seg(sp, 0.25, 0.72), "center");
+  ctx.restore();
+}
+
+if (p < 0.46) {
+  drawLightScene(ui.seg(p, 0.0, 0.56), 0);
+} else if (p < 0.56) {
+  drawLightScene(ui.seg(p, 0.0, 0.56), whip);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(W * (1 - whip), 0, W * whip + 2, H);
+  ctx.clip();
+  drawDarkFinale(ui.seg(p, 0.46, 1.0), whip);
+  ctx.restore();
+  ctx.fillStyle = accent;
+  ctx.fillRect(W * (1 - whip) - 3 * S, 0, 6 * S, H);
+} else {
+  drawDarkFinale(ui.seg(p, 0.46, 1.0), 1);
+}
+ctx.fillStyle = accent;
+ctx.fillRect(0, H - Math.max(4, 6 * S), W * p, Math.max(4, 6 * S));
 """
 
 private val COUNTER_TEMPLATE = """/*<studio-meta>
-{"schemaVersion":1,"title":"Progress Counter","defaultDurationSeconds":5,"seed":31,"props":[{"key":"label","label":"Label","type":"text","default":"PROGRESS"},{"key":"accent","label":"Accent","type":"color","default":"#66E3D1"}]}
+{
+  "schemaVersion": 2,
+  "title": "Data Counter Studio",
+  "defaultDurationSeconds": 5,
+  "seed": 31,
+  "props": [
+    {"key":"label","label":"Label","type":"text","default":"GROWTH INDEX"},
+    {"key":"accent","label":"Accent","type":"color","default":"#66E3D1"}
+  ],
+  "audio": {
+    "ambience": "minimal_pulse",
+    "ambienceVolume": 0.20,
+    "cues": [
+      {"p": 0.04, "sfx": "whoosh", "gain": 0.7},
+      {"p": 0.20, "sfx": "tick", "gain": 0.6, "pitch": 0.95},
+      {"p": 0.40, "sfx": "tick", "gain": 0.65, "pitch": 1.05},
+      {"p": 0.60, "sfx": "tick", "gain": 0.7, "pitch": 1.15},
+      {"p": 0.82, "sfx": "chime", "gain": 0.9}
+    ]
+  }
+}
 </studio-meta>*/
-ctx.fillStyle="#0B1020"; ctx.fillRect(0,0,W,H);
-const value=Math.round(ease.inOutCubic(p)*100);
-ctx.textAlign="center"; ctx.textBaseline="middle";
-ctx.fillStyle="#F5F7FF"; ctx.font=`800 ${'$'}{Math.max(72,180*S)}px sans-serif`;
-ctx.fillText(String(value).padStart(2,"0"),W/2,H/2);
-ctx.fillStyle="#AAB4CC"; ctx.font=`600 ${'$'}{Math.max(16,28*S)}px sans-serif`;
-ctx.fillText(String(P.label||"PROGRESS").toUpperCase(),W/2,H*0.68);
-ctx.fillStyle="#27354A"; ctx.fillRect(W*0.16,H*0.78,W*0.68,Math.max(4,8*S));
-ctx.fillStyle=P.accent||"#66E3D1"; ctx.fillRect(W*0.16,H*0.78,W*0.68*p,Math.max(4,8*S));
+
+const accent = String(P.accent || "#66E3D1");
+const intro = spring({ frame, fps, config: { damping: 14, stiffness: 130 } });
+ctx.fillStyle = "#080E1B";
+ctx.fillRect(0, 0, W, H);
+ui.drawGlow(ctx, W * 0.5, H * 0.46, Math.min(W, H) * 0.62, accent, 0.22);
+
+ctx.save();
+cam.apply(ctx, { x: 0, y: 0, zoom: interpolate(intro, [0, 1], [1.18, 1.0]) + p * 0.05, rot: 0 }, 1.0);
+const prog = ease.apple(ui.seg(p, 0.06, 0.86));
+const val = Math.round(prog * 100);
+ui.drawRing(ctx, W * 0.5, H * 0.45, 220 * S, prog, accent, "", "rgba(255,255,255,0.08)", "#FFFFFF", 16 * S);
+
+ctx.textAlign = "center";
+ctx.textBaseline = "middle";
+ctx.fillStyle = "#F5F7FF";
+ctx.font = "800 " + Math.max(64, Math.round(168 * S)) + "px sans-serif";
+ctx.fillText(String(val).padStart(2, "0") + "%", W * 0.5, H * 0.45);
+
+ctx.fillStyle = "#AAB4CC";
+ctx.font = "700 " + Math.max(15, Math.round(28 * S)) + "px monospace, sans-serif";
+ctx.fillText(String(P.label || "GROWTH INDEX").toUpperCase(), W * 0.5, H * 0.72);
+ctx.restore();
+
+ctx.fillStyle = accent;
+ctx.fillRect(0, H - Math.max(4, 6 * S), W * p, Math.max(4, 6 * S));
 """
 
 @Composable
@@ -428,6 +578,11 @@ private fun RenderScreen(
     onCancel: () -> Unit
 ) {
     var previewFrame by remember { mutableIntStateOf(0) }
+    val parsedMeta = remember(project.sourceBody) { runCatching { ProjectMetadataParser.parse(project.sourceBody) }.getOrNull() }
+    val cueCount = parsedMeta?.audio?.cues?.size ?: 0
+    val ambienceName = parsedMeta?.audio?.ambience ?: "none"
+    val hasAudioInCode = cueCount > 0 || ambienceName != "none"
+
     LaunchedEffect(project.renderSettings.totalFrames()) {
         previewFrame = previewFrame.coerceIn(0, (project.renderSettings.totalFrames() - 1).coerceAtLeast(0))
     }
@@ -435,7 +590,7 @@ private fun RenderScreen(
         if (ready) onPreview(previewFrame)
     }
     PageColumn {
-        SectionTitle("Render Studio", "Frame-based output · H.264 / MP4 · pemrosesan lokal")
+        SectionTitle("Render Studio", "H.264 + AAC SFX / MP4 · pemrosesan lokal offline")
         Panel {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("LIVE CANVAS PREVIEW", color = Color(0xFF66E3D1), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -474,20 +629,36 @@ private fun RenderScreen(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Durasi", color = Color(0xFFDCE5F6), fontSize = 12.sp, modifier = Modifier.weight(1f))
-                SettingChipsInline(listOf("3s", "5s", "10s", "15s", "30s"), "${project.renderSettings.durationSeconds}s") {
+                SettingChipsInline(listOf("3s", "5s", "10s", "15s", "30s", "60s"), "${project.renderSettings.durationSeconds}s") {
                     onProjectChange(project.copy(renderSettings = project.renderSettings.copy(durationSeconds = it.removeSuffix("s").toInt())))
                 }
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Audio & SFX (AAC)", color = Color(0xFFDCE5F6), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (hasAudioInCode) "$cueCount SFX · bed: $ambienceName"
+                        else "Belum ada blok audio di studio-meta",
+                        color = if (hasAudioInCode) Color(0xFF66E3D1) else Color(0xFF75839E),
+                        fontSize = 10.sp
+                    )
+                }
+                Switch(
+                    checked = project.renderSettings.includeAudio,
+                    onCheckedChange = { onProjectChange(project.copy(renderSettings = project.renderSettings.copy(includeAudio = it))) }
+                )
+            }
             val (w, h) = project.renderSettings.dimensions()
-            Text("Output: ${w}×${h} px · ${project.renderSettings.totalFrames()} frames · H.264 / MP4", color = Color(0xFF8291AC), fontSize = 10.sp)
+            val codecLabel = if (project.renderSettings.includeAudio && hasAudioInCode) "H.264 + AAC / MP4" else "H.264 / MP4"
+            Text("Output: ${w}×${h} px · ${project.renderSettings.totalFrames()} frames · $codecLabel", color = Color(0xFF8291AC), fontSize = 10.sp)
         }
         Panel {
             Text("EXPORT", color = Color(0xFF66E3D1), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Text(
                 when {
                     !ready -> "Menunggu WebView memuat runtime lokal."
-                    !exportSupported -> "WebView ini belum mengonfirmasi OffscreenCanvas Worker dan ArrayBuffer bridge. Perbarui Android System WebView jika ekspor belum tersedia."
-                    else -> "Frame dikirim satu per satu dengan ACK/backpressure. Video divalidasi sebelum dipublikasikan ke Galeri."
+                    !exportSupported -> "WebView ini belum mengonfirmasi OffscreenCanvas Worker dan ArrayBuffer bridge."
+                    else -> "Frame dikirim deterministik dengan ACK/backpressure + audio AAC sinkron per frame."
                 },
                 color = Color(0xFF9EACC5), fontSize = 11.sp
             )
@@ -500,7 +671,6 @@ private fun RenderScreen(
                 if (renderMessage.isNotBlank()) Text(renderMessage, color = Color(0xFF9EACC5), fontSize = 11.sp)
             }
         }
-        Text("Catatan: durasi render bergantung pada codec, suhu, memori, dan kemampuan perangkat. Preset 4K/60 FPS tidak dijanjikan pada HP kelas rendah.", color = Color(0xFF75839E), fontSize = 10.sp)
     }
 }
 
@@ -647,9 +817,9 @@ private fun DocsScreen(activity: MainActivity, onSave: () -> Unit) {
     val content = remember { activity.assets.open("docs/skill.md").bufferedReader().use { it.readText() } }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     PageColumn {
-        SectionTitle("Docs", "Kontrak output AI Agent dan aturan Canvas Worker.")
+        SectionTitle("Docs v0.2", "Kitab Motion Director, Remotion Engine & 16 SFX Studio.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(content)); Toast.makeText(activity, "Docs disalin", Toast.LENGTH_SHORT).show() }, modifier = Modifier.weight(1f)) { Text("Salin") }
+            Button(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(content)); Toast.makeText(activity, "Docs v0.2 disalin", Toast.LENGTH_SHORT).show() }, modifier = Modifier.weight(1f)) { Text("Salin") }
             OutlinedButton(onClick = onSave, modifier = Modifier.weight(1f)) { Text("Unduh .md") }
         }
         Panel {
@@ -662,4 +832,3 @@ private fun DocsScreen(activity: MainActivity, onSave: () -> Unit) {
 private fun TextButtonSmall(label: String, onClick: () -> Unit) {
     TextButton(onClick = onClick) { Text(label, fontSize = 10.sp) }
 }
-

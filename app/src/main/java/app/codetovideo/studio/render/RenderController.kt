@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import app.codetovideo.studio.core.ProjectMetadataParser
 import app.codetovideo.studio.core.StudioProject
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -41,10 +42,23 @@ class RenderController(private val context: Context, private val runtime: WebCan
             var encoder: MediaCodecSurfaceEncoder? = null
             var fileDescriptor: android.os.ParcelFileDescriptor? = null
             try {
-                check(Build.VERSION.SDK_INT >= 29) { "Ekspor langsung ke Galeri memerlukan Android 10+. Di Android 8–9 gunakan jalur Save As melalui SAF." }
+                check(Build.VERSION.SDK_INT >= 29) { "Ekspor langsung ke Galeri memerlukan Android 10+." }
                 check(runtime.exportSupported) { "Export frame belum tersedia pada Android System WebView ini." }
                 val settings = project.renderSettings
                 val (width, height) = settings.dimensions()
+                val meta = ProjectMetadataParser.parse(project.sourceBody)
+
+                val wantsAudio = settings.includeAudio && (meta.audio.cues.isNotEmpty() || meta.audio.ambience != "none")
+                val encodedAudio = if (wantsAudio) {
+                    runCatching {
+                        ProceduralAudioEngine.synthesizeAndEncode(
+                            durationSeconds = settings.durationSeconds,
+                            seed = project.seed,
+                            config = meta.audio
+                        )
+                    }.getOrNull()
+                } else null
+
                 val displayName = "CodeToVideo_${System.currentTimeMillis()}.mp4"
                 val values = ContentValues().apply {
                     put(MediaStore.Video.Media.DISPLAY_NAME, displayName)
@@ -58,13 +72,20 @@ class RenderController(private val context: Context, private val runtime: WebCan
                 val outputDescriptor = context.contentResolver.openFileDescriptor(outputUri, "w")
                     ?: throw IllegalStateException("File tujuan tidak bisa dibuka.")
                 fileDescriptor = outputDescriptor
-                val activeEncoder = MediaCodecSurfaceEncoder(outputDescriptor.fileDescriptor, width, height, settings.fps, settings.quality)
+                val activeEncoder = MediaCodecSurfaceEncoder(
+                    outputFd = outputDescriptor.fileDescriptor,
+                    width = width,
+                    height = height,
+                    fps = settings.fps,
+                    quality = settings.quality,
+                    audioTrack = encodedAudio
+                )
                 encoder = activeEncoder
 
                 val total = settings.totalFrames()
                 for (frame in 0 until total) {
                     check(!cancelled.get()) { "Render dibatalkan." }
-                    val rgba = runtime.requestExportFrame(project, frame).get(10, TimeUnit.SECONDS)
+                    val rgba = runtime.requestExportFrame(project, frame).get(20, TimeUnit.SECONDS)
                     check(rgba.size == width * height * 4) { "Ukuran payload frame $frame tidak valid." }
                     activeEncoder.writeFrame(frame, rgba)
                     val completed = frame + 1
