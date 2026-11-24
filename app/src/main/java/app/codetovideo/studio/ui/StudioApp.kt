@@ -949,6 +949,10 @@ fun StudioApp(activity: MainActivity) {
     var refreshProjects by remember { mutableIntStateOf(0) }
     var refreshGallery by remember { mutableIntStateOf(0) }
     var previewTick by remember { mutableIntStateOf(0) }
+    var creatorMode by remember { mutableStateOf(true) }
+    var showAiSettings by remember { mutableStateOf(false) }
+    var showQuickRevise by remember { mutableStateOf(false) }
+    val aiHistory = remember { androidx.compose.runtime.mutableStateListOf<StudioProject>() }
 
     val pal = remember(isLightGlass) { glassPalette(isLightGlass) }
 
@@ -1008,6 +1012,27 @@ fun StudioApp(activity: MainActivity) {
                     pal = pal,
                     onToggleTheme = { isLightGlass = !isLightGlass }
                 )
+                LiquidModeSwitcherBar(
+                    creatorMode = creatorMode,
+                    isLight = isLightGlass,
+                    showQuickReviseBtn = (selectedTab == StudioTab.RENDER && !isRendering),
+                    canUndo = aiHistory.isNotEmpty(),
+                    onModeChange = { isCreator ->
+                        creatorMode = isCreator
+                        if (isCreator && selectedTab != StudioTab.EDITOR && selectedTab != StudioTab.RENDER) {
+                            selectedTab = StudioTab.EDITOR
+                        }
+                    },
+                    onOpenAiSettings = { showAiSettings = true },
+                    onQuickRevise = { showQuickRevise = true },
+                    onUndo = {
+                        if (aiHistory.isNotEmpty()) {
+                            project = aiHistory.removeAt(aiHistory.lastIndex)
+                            previewTick++
+                            Toast.makeText(activity, "Kembali ke versi sebelumnya", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     AnimatedContent(
                         targetState = selectedTab,
@@ -1015,13 +1040,39 @@ fun StudioApp(activity: MainActivity) {
                         label = "tab_content"
                     ) { tab ->
                         when (tab) {
-                            StudioTab.EDITOR -> EditorScreen(
-                                project = project,
-                                pal = pal,
-                                onProjectChange = { project = it },
-                                onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
-                                onExport = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
-                            )
+                            StudioTab.EDITOR -> if (creatorMode) {
+                                AiCreatorScreen(
+                                    activity = activity,
+                                    project = project,
+                                    isLight = isLightGlass,
+                                    canUndo = aiHistory.isNotEmpty(),
+                                    onApplyGenerated = { newProject ->
+                                        aiHistory.add(project)
+                                        if (aiHistory.size > 10) aiHistory.removeAt(0)
+                                        project = newProject
+                                        selectedTab = StudioTab.RENDER
+                                        previewTick++
+                                    },
+                                    onUndo = {
+                                        if (aiHistory.isNotEmpty()) {
+                                            project = aiHistory.removeAt(aiHistory.lastIndex)
+                                            previewTick++
+                                            Toast.makeText(activity, "Kembali ke versi sebelumnya", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onOpenSettings = { showAiSettings = true },
+                                    onSwitchToPro = { creatorMode = false },
+                                    onGoRender = { selectedTab = StudioTab.RENDER; previewTick++ }
+                                )
+                            } else {
+                                EditorScreen(
+                                    project = project,
+                                    pal = pal,
+                                    onProjectChange = { project = it },
+                                    onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
+                                    onExport = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
+                                )
+                            }
                             StudioTab.RENDER -> RenderScreen(
                                 project = project,
                                 pal = pal,
@@ -1119,6 +1170,30 @@ fun StudioApp(activity: MainActivity) {
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
+
+            if (showQuickRevise) {
+                AiQuickReviseOverlay(
+                    activity = activity,
+                    project = project,
+                    isLight = isLightGlass,
+                    onDismiss = { showQuickRevise = false },
+                    onOpenSettings = { showQuickRevise = false; showAiSettings = true },
+                    onRevised = { updated ->
+                        aiHistory.add(project)
+                        if (aiHistory.size > 10) aiHistory.removeAt(0)
+                        project = updated
+                        previewTick++
+                        showQuickRevise = false
+                    }
+                )
+            }
+            if (showAiSettings) {
+                AiSettingsOverlay(
+                    activity = activity,
+                    isLight = isLightGlass,
+                    onDismiss = { showAiSettings = false }
+                )
+            }
         }
     }
 }
