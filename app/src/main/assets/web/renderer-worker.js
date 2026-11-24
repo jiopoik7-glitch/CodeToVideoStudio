@@ -147,7 +147,7 @@ function makeCameraApi(W, H) {
   });
 }
 
-// Micro 3D Engine v2 dengan Z-Buffer Scene Builder & 3-Point PBR Lighting
+// Micro 3D Engine v0.5 — Velvet Gradient, Smooth Lathe & 9-Point Organic Petals!
 const d3 = Object.freeze({
   rotX(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0], v[1]*c - v[2]*s, v[1]*s + v[2]*c]; },
   rotY(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0]*c + v[2]*s, v[1], -v[0]*s + v[2]*c]; },
@@ -178,22 +178,23 @@ const d3 = Object.freeze({
     const lRim = d3.norm([-0.22, 0.58, -0.80]);
     const q = [];
 
-    const shade = (rgb, n, vDir, specPow) => {
+    const shade = (rgb, n, vDir, specPow, sssAmt) => {
       const dk = Math.max(0, d3.dot(n, lKey));
       const df = Math.max(0, d3.dot(n, lFill));
       const dr = Math.max(0, d3.dot(n, lRim));
-      const fr = Math.pow(1 - Math.max(0, d3.dot(n, vDir)), 2.5);
+      const fr = Math.pow(1 - Math.max(0, d3.dot(n, vDir)), 2.6);
       let sp = 0;
       if (specPow > 0) {
         const hv = d3.norm([lKey[0]+vDir[0], lKey[1]+vDir[1], lKey[2]+vDir[2]]);
         sp = Math.pow(Math.max(0, d3.dot(n, hv)), specPow) * 0.30;
       }
-      const lit = 0.34 + dk * 0.70 + df * 0.16;
-      const rim = (dr * 0.26 + fr * 0.24) * 0.24;
-      return [rgb[0]*lit + 255*sp + 170*rim, rgb[1]*lit + 248*sp + 225*rim, rgb[2]*lit + 240*sp + 210*rim];
+      const sss = sssAmt ? Math.pow(Math.max(0, d3.dot([-lKey[0], -lKey[1], -lKey[2]], vDir)), 2) * sssAmt : 0;
+      const lit = 0.34 + dk * 0.70 + df * 0.16 + sss * 0.32;
+      const rim = (dr * 0.28 + fr * 0.26) * 0.24;
+      return [rgb[0]*lit + 255*sp + sss*65 + 170*rim, rgb[1]*lit + 248*sp + sss*18 + 225*rim, rgb[2]*lit + 240*sp + sss*28 + 210*rim];
     };
 
-    return {
+    const scene = {
       project: proj,
       poly(verts, colHex, opts) {
         const o = opts || {};
@@ -212,14 +213,56 @@ const d3 = Object.freeze({
           if (!o.twoSided) return;
           norm = [-norm[0], -norm[1], -norm[2]];
         }
-        const cA = shade(parseHexRGB(colHex, [220, 60, 85]), norm, vDir, o.spec || 18);
-        const cB = o.col2 ? shade(parseHexRGB(o.col2, cA), norm, vDir, (o.spec || 18) * 1.1) : null;
+        const cA = shade(parseHexRGB(colHex, [220, 60, 85]), norm, vDir, o.spec || 18, o.sss || 0);
+        const cB = o.col2 ? shade(parseHexRGB(o.col2, cA), norm, vDir, (o.spec || 18) * 1.15, (o.sss || 0) * 1.2) : null;
+        const edgeMul = o.edgeMul !== undefined ? o.edgeMul : 0.90;
         q.push({
           t: cB ? 3 : 0, z: sz/n + (o.zBias || 0), ps,
           cA: rgbStr(cA, o.alpha), cB: cB ? rgbStr(cB, o.alpha) : null,
           gA: o.gA || 0, gB: o.gB !== undefined ? o.gB : Math.min(2, n - 1),
-          st: rgbStr([cA[0]*0.88, cA[1]*0.88, cA[2]*0.88], o.alpha === undefined ? 0.85 : o.alpha * 0.85)
+          st: rgbStr([cA[0]*edgeMul, cA[1]*edgeMul, cA[2]*edgeMul], o.edgeAlpha !== undefined ? o.edgeAlpha : (o.alpha === undefined ? 0.85 : o.alpha * 0.85))
         });
+      },
+      // 9-point rounded organic velvet petal (eliminates jagged triangular look!)
+      addOrganicPetal(origin, angY, baseRad, baseY, pW, pH, pitch, cup, curl, colBase, colTip, zBias) {
+        const local = [
+          [-pW * 0.22, 0, 0],
+          [pW * 0.22, 0, 0],
+          [pW * 0.48, pH * 0.36, -cup * 0.80],
+          [pW * 0.52, pH * 0.72, -cup * 0.55],
+          [pW * 0.30, pH * 0.95, -cup * 0.14 + curl * 0.9],
+          [0, pH * 1.03, -cup * 0.06 + curl * 1.2],
+          [-pW * 0.30, pH * 0.95, -cup * 0.14 + curl * 0.9],
+          [-pW * 0.52, pH * 0.72, -cup * 0.55],
+          [-pW * 0.48, pH * 0.36, -cup * 0.80]
+        ];
+        const world = local.map((pt) => {
+          let qv = d3.rotX(pt, pitch);
+          qv = [qv[0], qv[1] + baseY, qv[2] + baseRad];
+          qv = d3.rotY(qv, angY);
+          return [origin[0] + qv[0], origin[1] + qv[1], origin[2] + qv[2]];
+        });
+        scene.poly(world, colBase, { col2: colTip, gA: 0, gB: 5, twoSided: true, spec: 26, sss: 0.36, zBias: zBias || 0, edgeAlpha: 0.30 });
+      },
+      // Smooth faceted lathe (pots, stems, pedestals)
+      addLathe(rings, sides, colBot, colTop, yOff, specPow, zBias) {
+        const rPts = [];
+        for (let r = 0; r < rings.length; r++) {
+          const rad = rings[r].r, y = rings[r].y + (yOff || 0), pts = [];
+          for (let i = 0; i < sides; i++) {
+            const a = (i * Math.PI * 2) / sides;
+            pts.push([Math.cos(a) * rad, y, Math.sin(a) * rad]);
+          }
+          rPts.push(pts);
+        }
+        for (let r = 0; r < rings.length - 1; r++) {
+          for (let i = 0; i < sides; i++) {
+            const ni = (i + 1) % sides;
+            const v0 = rPts[r][i], v1 = rPts[r + 1][i], v2 = rPts[r + 1][ni], v3 = rPts[r][ni];
+            const polyVerts = rings[r].r < 0.001 ? [v0, v1, v2] : (rings[r + 1].r < 0.001 ? [v0, v1, v3] : [v0, v1, v2, v3]);
+            scene.poly(polyVerts, colBot, { col2: colTop, gA: 0, gB: 1, twoSided: false, spec: specPow || 16, zBias: zBias || 0, edgeMul: 0.96, edgeAlpha: 0.92 });
+          }
+        }
       },
       line(a, b, colStr, wPx) {
         const pa = proj(a), pb = proj(b);
@@ -231,8 +274,8 @@ const d3 = Object.freeze({
         if (!pr) return;
         const rPx = (rWorld * focal) / pr[2];
         if (rPx < 0.6) return;
-        const rgb = parseHexRGB(colHex, [255, 220, 140]);
-        q.push({ t: 2, z: pr[2], x: pr[0], y: pr[1], r: rPx, col: rgbStr(rgb, alpha), glow: rgbStr(rgb, (alpha || 1) * 0.25) });
+        const rgb = parseHexRGB(colHex, [255, 224, 155]);
+        q.push({ t: 2, z: pr[2], x: pr[0], y: pr[1], r: rPx, rgb, a: alpha === undefined ? 0.85 : alpha });
       },
       render(c, S) {
         q.sort((a, b) => b.z - a.z);
@@ -253,19 +296,26 @@ const d3 = Object.freeze({
             } else c.fillStyle = it.cA;
             c.fill();
             c.strokeStyle = it.st;
-            c.lineWidth = Math.max(0.6, 0.85 * S);
+            c.lineWidth = Math.max(0.55, 0.8 * S);
             c.stroke();
           } else if (it.t === 1) {
             c.strokeStyle = it.col; c.lineWidth = it.w;
             c.beginPath(); c.moveTo(it.pa[0], it.pa[1]); c.lineTo(it.pb[0], it.pb[1]); c.stroke();
           } else {
-            c.fillStyle = it.glow; c.beginPath(); c.arc(it.x, it.y, it.r * 2.4, 0, Math.PI * 2); c.fill();
-            c.fillStyle = it.col; c.beginPath(); c.arc(it.x, it.y, it.r, 0, Math.PI * 2); c.fill();
+            // Soft optical bokeh glow orb (no flat bullseye ring!)
+            const g = c.createRadialGradient(it.x, it.y, 0, it.x, it.y, it.r * 2.8);
+            g.addColorStop(0, rgbStr([255, 252, 240], it.a));
+            g.addColorStop(0.28, rgbStr(it.rgb, it.a * 0.72));
+            g.addColorStop(0.65, rgbStr(it.rgb, it.a * 0.16));
+            g.addColorStop(1, rgbStr(it.rgb, 0));
+            c.fillStyle = g;
+            c.beginPath(); c.arc(it.x, it.y, it.r * 2.8, 0, Math.PI * 2); c.fill();
           }
         }
         c.restore();
       }
     };
+    return scene;
   }
 });
 
@@ -285,6 +335,7 @@ function makeUiApi(S) {
     c.closePath();
   };
 
+  // Seamless Liquid Glass card — ZERO sharp horizontal mid-line crease!
   const drawGlassBase = (c, x, y, w, h, r, opts) => {
     const o = opts || {};
     const light = !!o.light;
@@ -292,17 +343,17 @@ function makeUiApi(S) {
     const sweep = o.sweep !== undefined ? o.sweep : -1;
 
     c.save();
-    c.shadowColor = light ? "rgba(18, 28, 42, 0.14)" : "rgba(0, 0, 0, 0.42)";
-    c.shadowBlur = 38 * S;
+    c.shadowColor = light ? "rgba(18, 28, 42, 0.13)" : "rgba(0, 0, 0, 0.44)";
+    c.shadowBlur = 40 * S;
     c.shadowOffsetY = 14 * S;
-    const bg = c.createLinearGradient(x, y, x, y + h);
+    const bg = c.createLinearGradient(x, y, x + w * 0.15, y + h);
     if (light) {
-      bg.addColorStop(0, "rgba(255, 255, 255, 0.84)");
-      bg.addColorStop(0.55, "rgba(246, 249, 254, 0.64)");
-      bg.addColorStop(1, "rgba(255, 255, 255, 0.74)");
+      bg.addColorStop(0, "rgba(255, 255, 255, 0.88)");
+      bg.addColorStop(0.5, "rgba(247, 250, 255, 0.72)");
+      bg.addColorStop(1, "rgba(255, 255, 255, 0.80)");
     } else {
       bg.addColorStop(0, "rgba(255, 255, 255, 0.16)");
-      bg.addColorStop(0.5, "rgba(255, 255, 255, 0.06)");
+      bg.addColorStop(0.45, "rgba(255, 255, 255, 0.065)");
       bg.addColorStop(1, "rgba(255, 255, 255, 0.11)");
     }
     c.fillStyle = bg;
@@ -310,21 +361,23 @@ function makeUiApi(S) {
     c.fill();
     c.restore();
 
-    // Specular sheen + moving liquid reflection
+    // Smooth curved optical top-left glow (fades seamlessly to 0 alpha — no hard cutoff line!)
     c.save();
     rrectFn(c, x, y, w, h, rad);
     c.clip();
-    const sheen = c.createLinearGradient(x, y, x + w * 0.45, y + h * 0.55);
-    sheen.addColorStop(0, light ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.22)");
+    const specR = Math.max(w, h) * 0.82;
+    const sheen = c.createRadialGradient(x + w * 0.18, y - h * 0.12, 0, x + w * 0.18, y - h * 0.12, specR);
+    sheen.addColorStop(0, light ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.20)");
+    sheen.addColorStop(0.42, light ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.05)");
     sheen.addColorStop(1, "rgba(255,255,255,0)");
     c.fillStyle = sheen;
-    c.fillRect(x, y, w, h * 0.50);
+    c.fillRect(x, y, w, h);
 
     if (sweep >= 0) {
-      const sx = lerpNum(x - w * 0.5, x + w * 1.5, sweep % 1);
-      const beam = c.createLinearGradient(sx - w * 0.25, y, sx + w * 0.25, y + h);
+      const sx = lerpNum(x - w * 0.55, x + w * 1.55, sweep % 1);
+      const beam = c.createLinearGradient(sx - w * 0.24, y, sx + w * 0.24, y + h);
       beam.addColorStop(0, "rgba(255,255,255,0)");
-      beam.addColorStop(0.5, light ? "rgba(255,255,255,0.55)" : "rgba(210,235,255,0.22)");
+      beam.addColorStop(0.5, light ? "rgba(255,255,255,0.52)" : "rgba(215,236,255,0.18)");
       beam.addColorStop(1, "rgba(255,255,255,0)");
       c.fillStyle = beam;
       c.fillRect(x, y, w, h);
@@ -335,16 +388,16 @@ function makeUiApi(S) {
     c.save();
     const rim = c.createLinearGradient(x, y, x + w, y + h);
     if (o.chromatic !== false) {
-      rim.addColorStop(0, light ? "rgba(255,255,255,0.98)" : "rgba(255,255,255,0.55)");
-      rim.addColorStop(0.35, light ? "rgba(165,212,255,0.45)" : "rgba(155,210,255,0.24)");
-      rim.addColorStop(0.7, light ? "rgba(255,195,220,0.30)" : "rgba(255,255,255,0.12)");
-      rim.addColorStop(1, light ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.38)");
+      rim.addColorStop(0, light ? "rgba(255,255,255,0.98)" : "rgba(255,255,255,0.56)");
+      rim.addColorStop(0.35, light ? "rgba(165,212,255,0.48)" : "rgba(155,212,255,0.24)");
+      rim.addColorStop(0.70, light ? "rgba(255,198,224,0.32)" : "rgba(255,255,255,0.12)");
+      rim.addColorStop(1, light ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.38)");
     } else {
       rim.addColorStop(0, light ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.42)");
-      rim.addColorStop(1, light ? "rgba(255,255,255,0.70)" : "rgba(255,255,255,0.26)");
+      rim.addColorStop(1, light ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.26)");
     }
     c.strokeStyle = rim;
-    c.lineWidth = Math.max(1.3, 2.2 * S);
+    c.lineWidth = Math.max(1.3, 2.1 * S);
     rrectFn(c, x, y, w, h, rad);
     c.stroke();
     c.restore();
@@ -377,6 +430,24 @@ function makeUiApi(S) {
       }
       out.push(cur);
       return out;
+    },
+    drawGrid(c, W, H, stepPx, colStr) {
+      const st = Math.max(24, stepPx || 120 * S);
+      c.save();
+      c.strokeStyle = colStr || "rgba(255,255,255,0.038)";
+      c.lineWidth = Math.max(1, 1.1 * S);
+      c.beginPath();
+      for (let x = 0; x <= W; x += st) { c.moveTo(x, 0); c.lineTo(x, H); }
+      for (let y = 0; y <= H; y += st) { c.moveTo(0, y); c.lineTo(W, y); }
+      c.stroke();
+      c.restore();
+    },
+    drawVignette(c, W, H, strength, light) {
+      const g = c.createRadialGradient(W * 0.5, H * 0.46, Math.min(W, H) * 0.34, W * 0.5, H * 0.5, Math.max(W, H) * 0.78);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(1, light ? ("rgba(28,36,48," + clampNum(strength || 0.10, 0, 0.6) + ")") : ("rgba(0,0,0," + clampNum(strength || 0.38, 0, 0.85) + ")"));
+      c.fillStyle = g;
+      c.fillRect(0, 0, W, H);
     },
     drawGlow(c, x, y, r, hex, alpha) {
       const g = c.createRadialGradient(x, y, 0, x, y, r);
@@ -474,7 +545,6 @@ function makeUiApi(S) {
       }
       c.restore();
     },
-    // Fixed descender clip headroom (g, y, p, j tidak pernah terpotong!)
     drawRichText(c, tokens, x, y, maxW, fontSize, lineH, baseCol, prog, align) {
       const getFont = (tk) => tk.italic
         ? ("italic 500 " + Math.round(fontSize * 1.06) + "px Georgia, serif")
@@ -502,7 +572,7 @@ function makeUiApi(S) {
       if (line.length) lines.push({ items: line, width: lw });
       c.textBaseline = "top";
       c.textAlign = "left";
-      const descPad = fontSize * 0.36;
+      const descPad = fontSize * 0.40;
       for (let li = 0; li < lines.length; li++) {
         const ln = lines[li];
         const lp = ease.snap(clampNum((prog - li * 0.13) / 0.72, 0, 1));
@@ -519,7 +589,7 @@ function makeUiApi(S) {
           const it = ln.items[wi];
           c.font = it.font;
           c.fillStyle = it.color;
-          c.fillText(it.text, cx, ly + (1 - lp) * lineH * 0.80 + (it.italic ? -fontSize * 0.03 : 0));
+          c.fillText(it.text, cx, ly + (1 - lp) * lineH * 0.78 + (it.italic ? -fontSize * 0.03 : 0));
           cx += it.w + spW;
         }
         c.restore();
@@ -541,9 +611,6 @@ function makeUiApi(S) {
   });
 }
 
-// =======================================================
-// MOTION DIRECTOR FX SUITE v0.4 (Transitions, Kinetic Text, Particles, Charts)
-// =======================================================
 function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
   const transition = Object.freeze({
     whipPan(c, u, drawA, drawB, accentCol) {
@@ -571,10 +638,7 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       const oy = cy !== undefined ? cy : H * 0.5;
       const r = Math.hypot(W, H) * 1.05 * k;
       drawA(k);
-      c.save();
-      c.beginPath(); c.arc(ox, oy, r, 0, Math.PI * 2); c.clip();
-      drawB(k);
-      c.restore();
+      c.save(); c.beginPath(); c.arc(ox, oy, r, 0, Math.PI * 2); c.clip(); drawB(k); c.restore();
       if (ringCol) {
         c.save(); c.strokeStyle = ui.rgba(ringCol, (1 - k) * 0.85); c.lineWidth = Math.max(3, 8 * S);
         c.beginPath(); c.arc(ox, oy, r, 0, Math.PI * 2); c.stroke(); c.restore();
@@ -582,7 +646,7 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
     },
     glassSlide(c, u, drawA, drawB) {
       const k = ease.liquid(u);
-      c.save(); c.translate(-k * W * 0.25, 0); drawA(k); c.restore();
+      c.save(); c.translate(-k * W * 0.22, 0); drawA(k); c.restore();
       const x = W * (1 - k);
       c.save();
       c.beginPath(); ui.rrect(c, x, 0, W + 40 * S, H, 38 * S * (1 - k)); c.clip();
@@ -616,11 +680,7 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       if (half > 1) {
         c.save(); c.beginPath(); c.rect(0, 0, W, half); c.clip(); drawA(k); c.restore();
         c.save(); c.beginPath(); c.rect(0, H - half, W, half); c.clip(); drawA(k); c.restore();
-        if (accentCol) {
-          c.fillStyle = accentCol;
-          c.fillRect(0, half - 2 * S, W, 4 * S);
-          c.fillRect(0, H - half - 2 * S, W, 4 * S);
-        }
+        if (accentCol) { c.fillStyle = accentCol; c.fillRect(0, half - 2 * S, W, 4 * S); c.fillRect(0, H - half - 2 * S, W, 4 * S); }
       }
     },
     liquidWipe(c, u, drawA, drawB) {
@@ -629,17 +689,13 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       const baseX = W * (1 - k);
       c.save();
       c.beginPath();
-      c.moveTo(W + 10, 0);
-      c.lineTo(W + 10, H);
+      c.moveTo(W + 10, 0); c.lineTo(W + 10, H);
       for (let i = 20; i >= 0; i--) {
         const ry = (i / 20) * H;
         const wave = Math.sin(i * 0.55 + k * 7) * 65 * S * Math.sin(k * Math.PI);
         c.lineTo(baseX + wave, ry);
       }
-      c.closePath();
-      c.clip();
-      drawB(k);
-      c.restore();
+      c.closePath(); c.clip(); drawB(k); c.restore();
     },
     cardFlip3D(c, u, drawA, drawB) {
       const k = ease.whip(u);
@@ -658,7 +714,7 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       const words = String(str || "").trim().split(/\s+/).filter(Boolean);
       c.font = "800 " + fontSize + "px sans-serif";
       const spW = c.measureText(" ").width;
-      const lineH = fontSize * 1.18;
+      const lineH = fontSize * 1.20;
       const lines = [];
       let ln = [], lw = 0;
       for (let i = 0; i < words.length; i++) {
@@ -678,7 +734,7 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
           if (sp > 0.01) {
             c.save();
             c.globalAlpha *= clampNum(sp * 1.25, 0, 1);
-            c.fillText(it.t, cx, ly + (1 - sp) * fontSize * 0.65);
+            c.fillText(it.t, cx, ly + (1 - sp) * fontSize * 0.55);
             c.restore();
           }
           cx += it.w + spW;
@@ -699,6 +755,7 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
         cx += c.measureText(ch).width;
       }
     },
+    // Clean rolling odometer without vertical ghost overlap!
     counterRoll(c, val, x, y, fontSize, col, suffix, align) {
       const v = Math.max(0, Number(val || 0));
       const base = Math.floor(v);
@@ -707,16 +764,22 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       const txtB = String(base + 1) + (suffix || "");
       c.save();
       c.font = "800 " + fontSize + "px sans-serif";
-      const mw = Math.max(c.measureText(txtA).width, c.measureText(txtB).width) + 20 * S;
+      const mw = Math.max(c.measureText(txtA).width, c.measureText(txtB).width) + 28 * S;
       const sx = align === "center" ? x - mw * 0.5 : (align === "right" ? x - mw : x);
-      c.beginPath(); c.rect(sx, y - fontSize * 0.12, mw, fontSize * 1.25); c.clip();
+      const boxH = fontSize * 1.22;
+      c.beginPath(); c.rect(sx, y - fontSize * 0.08, mw, boxH); c.clip();
       c.fillStyle = col || "#FFFFFF"; c.textAlign = align || "left"; c.textBaseline = "top";
       const k = ease.ios(frac);
-      c.globalAlpha *= (1 - k * 0.6);
-      c.fillText(txtA, x, y - k * fontSize * 1.15);
+      const stepY = fontSize * 1.24;
+      c.save();
+      c.globalAlpha *= (1 - k);
+      c.fillText(txtA, x, y - k * stepY);
+      c.restore();
       if (frac > 0.01) {
-        c.globalAlpha = clampNum(k * 1.2, 0, 1);
-        c.fillText(txtB, x, y + (1 - k) * fontSize * 1.15);
+        c.save();
+        c.globalAlpha *= k;
+        c.fillText(txtB, x, y + (1 - k) * stepY);
+        c.restore();
       }
       c.restore();
     },
@@ -724,12 +787,12 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       c.save();
       c.font = "800 " + fontSize + "px sans-serif";
       const tw = c.measureText(String(str)).width;
-      const padX = 18 * S, padY = 8 * S;
+      const padX = 20 * S, padY = 10 * S;
       const bw = tw + padX * 2, bh = fontSize * 1.24 + padY * 2;
       const sx = align === "center" ? x - bw * 0.5 : x;
       const k = ease.snap(prog);
       c.fillStyle = bgCol || "#23C483";
-      ui.rrect(c, sx, y - padY, bw * k, bh, 14 * S);
+      ui.rrect(c, sx, y - padY, bw * k, bh, 16 * S);
       c.fill();
       c.fillStyle = txtCol || "#0A1014";
       c.textAlign = "left"; c.textBaseline = "top";
@@ -756,10 +819,10 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       c.font = "800 " + fontSize + "px sans-serif";
       const w = c.measureText(String(str)).width + 24 * S;
       const sx = align === "center" ? x - w * 0.5 : x;
-      c.beginPath(); c.rect(sx, y - fontSize * 0.15, w, fontSize * 1.45); c.clip();
+      c.beginPath(); c.rect(sx, y - fontSize * 0.15, w, fontSize * 1.48); c.clip();
       c.fillStyle = col || "#FFFFFF"; c.textAlign = align || "left"; c.textBaseline = "top";
       c.globalAlpha *= k;
-      c.fillText(String(str), x, y + (1 - k) * fontSize * 1.05);
+      c.fillText(String(str), x, y + (1 - k) * fontSize * 1.02);
       c.restore();
     }
   });
@@ -772,7 +835,12 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
         const px = rand(800 + i * 3) * W + Math.sin(t * (0.5 + (i % 3) * 0.2) + i) * 32 * S;
         const py = ((rand(801 + i * 3) * H - t * (16 + (i % 4) * 8) * S) % (H + 80 * S) + H + 80 * S) % (H + 80 * S) - 40 * S;
         const r = (10 + rand(802 + i * 3) * 28) * S;
-        c.fillStyle = rgbStr(rgb, (alpha || 0.16) * (0.45 + 0.55 * Math.sin(t + i)));
+        const a = (alpha || 0.16) * (0.45 + 0.55 * Math.sin(t + i));
+        const g = c.createRadialGradient(px, py, 0, px, py, r);
+        g.addColorStop(0, rgbStr(rgb, a));
+        g.addColorStop(0.65, rgbStr(rgb, a * 0.35));
+        g.addColorStop(1, rgbStr(rgb, 0));
+        c.fillStyle = g;
         c.beginPath(); c.arc(px, py, r, 0, Math.PI * 2); c.fill();
       }
     },
@@ -835,55 +903,95 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       const k = ease.apple(prog === undefined ? 1 : prog);
       const minV = Math.min(...values), maxV = Math.max(...values);
       const span = Math.max(0.0001, maxV - minV);
-      const pts = values.map((v, i) => [
-        x + (i / (values.length - 1)) * w,
-        y + h - ((v - minV) / span) * h
-      ]);
+      const pts = values.map((v, i) => [x + (i / (values.length - 1)) * w, y + h - ((v - minV) / span) * h]);
       c.save();
-      c.beginPath(); c.rect(x - 10 * S, y - 20 * S, (w + 20 * S) * k, h + 40 * S); c.clip();
+      // Subtle horizontal reference lines
+      c.strokeStyle = "rgba(180,200,220,0.12)"; c.lineWidth = Math.max(1, 1.2 * S);
+      for (let g = 0; g <= 3; g++) {
+        const gy = y + (h * g) / 3;
+        c.beginPath(); c.moveTo(x, gy); c.lineTo(x + w, gy); c.stroke();
+      }
+      c.beginPath(); c.rect(x - 10 * S, y - 24 * S, (w + 20 * S) * k, h + 48 * S); c.clip();
       const grad = c.createLinearGradient(0, y, 0, y + h);
-      grad.addColorStop(0, ui.rgba(col, 0.32)); grad.addColorStop(1, ui.rgba(col, 0));
+      grad.addColorStop(0, ui.rgba(col, 0.34)); grad.addColorStop(1, ui.rgba(col, 0));
       c.beginPath(); c.moveTo(pts[0][0], y + h); c.lineTo(pts[0][0], pts[0][1]);
       for (let i = 0; i < pts.length - 1; i++) {
-        const mx = (pts[i][0] + pts[i + 1][0]) * 0.5;
-        const my = (pts[i][1] + pts[i + 1][1]) * 0.5;
+        const mx = (pts[i][0] + pts[i + 1][0]) * 0.5, my = (pts[i][1] + pts[i + 1][1]) * 0.5;
         c.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
       }
       c.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
       c.lineTo(pts[pts.length - 1][0], y + h); c.closePath();
       c.fillStyle = grad; c.fill();
 
-      c.strokeStyle = col; c.lineWidth = Math.max(2.5, 4.5 * S); c.lineCap = "round";
+      c.strokeStyle = col; c.lineWidth = Math.max(3, 5 * S); c.lineCap = "round";
       c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
       for (let i = 0; i < pts.length - 1; i++) {
-        const mx = (pts[i][0] + pts[i + 1][0]) * 0.5;
-        const my = (pts[i][1] + pts[i + 1][1]) * 0.5;
+        const mx = (pts[i][0] + pts[i + 1][0]) * 0.5, my = (pts[i][1] + pts[i + 1][1]) * 0.5;
         c.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
       }
       c.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]); c.stroke();
+
+      // Glowing beacon dot at final data point
+      const lp = pts[pts.length - 1];
+      ui.drawGlow(c, lp[0], lp[1], 22 * S, col, 0.75);
+      c.fillStyle = "#FFFFFF";
+      c.beginPath(); c.arc(lp[0], lp[1], 6.5 * S, 0, Math.PI * 2); c.fill();
       c.restore();
     },
-    bars(c, items, x, y, w, h, startFrame) {
+    // Fixed contrast (auto dark text on light mode + value labels above bars!)
+    bars(c, items, x, y, w, h, startFrame, opts) {
       if (!items || !items.length) return;
-      const gap = 18 * S;
+      const o = opts || {};
+      const lblCol = o.labelColor || (o.light ? "rgba(14,20,29,0.72)" : "rgba(255,255,255,0.78)");
+      const valCol = o.valueColor || (o.light ? "#0E141D" : "#FFFFFF");
+      const gap = 20 * S;
       const bw = (w - gap * (items.length - 1)) / items.length;
+      c.save();
+      c.strokeStyle = o.light ? "rgba(14,20,29,0.08)" : "rgba(255,255,255,0.08)";
+      c.lineWidth = Math.max(1, 1.2 * S);
+      c.beginPath(); c.moveTo(x, y + h); c.lineTo(x + w, y + h); c.stroke();
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        const sp = spring({ frame: frame - (startFrame || 0) - i * 4, fps, config: { damping: 14, stiffness: 140 } });
-        const bh = Math.max(8 * S, h * clampNum(it.value || 0, 0, 1) * clampNum(sp, 0, 1.1));
+        const sp = spring({ frame: frame - (startFrame || 0) - i * 4, fps, config: { damping: 14, stiffness: 145 } });
+        const frac = clampNum(it.value || 0, 0, 1) * clampNum(sp, 0, 1.06);
+        const bh = Math.max(8 * S, (h - 32 * S) * frac);
         const bx = x + i * (bw + gap);
         const by = y + h - bh;
-        c.fillStyle = it.color || "#66E3D1";
-        ui.rrect(c, bx, by, bw, bh, 12 * S); c.fill();
+        c.fillStyle = it.color || "#32D74B";
+        ui.rrect(c, bx, by, bw, bh, 14 * S); c.fill();
+        if (o.showValues !== false && sp > 0.05) {
+          c.fillStyle = valCol;
+          c.font = "800 " + Math.max(11, Math.round(21 * S)) + "px sans-serif";
+          c.textAlign = "center"; c.textBaseline = "bottom";
+          c.fillText(Math.round(frac * 100) + "%", bx + bw * 0.5, by - 8 * S);
+        }
         if (it.label) {
-          c.fillStyle = "rgba(255,255,255,0.75)";
-          c.font = "700 " + Math.max(10, Math.round(18 * S)) + "px sans-serif";
+          c.fillStyle = lblCol;
+          c.font = "700 " + Math.max(11, Math.round(20 * S)) + "px sans-serif";
           c.textAlign = "center"; c.textBaseline = "top";
-          c.fillText(String(it.label), bx + bw * 0.5, y + h + 10 * S);
+          c.fillText(String(it.label), bx + bw * 0.5, y + h + 12 * S);
         }
       }
+      c.restore();
     }
   });
+
+  // Declarative Cinema Camera Keyframe Rig (eliminates frozen/dead camera holds!)
+  const cameraRig = (pVal, keys, breathAmp) => {
+    if (!Array.isArray(keys) || !keys.length) return { x: 0, y: 0, zoom: 1, rot: 0 };
+    let k0 = keys[0], k1 = keys[keys.length - 1];
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (pVal >= keys[i].p && pVal <= keys[i + 1].p) { k0 = keys[i]; k1 = keys[i + 1]; break; }
+    }
+    const u = k1.p > k0.p ? ease.smooth(clampNum((pVal - k0.p) / (k1.p - k0.p), 0, 1)) : 0;
+    const b = breathAmp !== undefined ? breathAmp : 4.5 * S;
+    return {
+      x: lerpNum(k0.x || 0, k1.x || 0, u) + Math.sin(t * 1.15) * b,
+      y: lerpNum(k0.y || 0, k1.y || 0, u) + Math.cos(t * 0.92) * b * 0.8,
+      zoom: lerpNum(k0.zoom !== undefined ? k0.zoom : 1, k1.zoom !== undefined ? k1.zoom : 1, u) + Math.sin(t * 0.7) * 0.005,
+      rot: lerpNum(k0.rot || 0, k1.rot || 0, u) + Math.sin(t * 0.8) * 0.002
+    };
+  };
 
   return Object.freeze({
     stagger(frameVal, index, delayFrames, cfg) {
@@ -894,6 +1002,7 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
       const sp = clampNum((pVal - start) / Math.max(0.0001, end - start), 0, 1);
       return { p: sp, in: ease.snap(clampNum(sp / 0.18, 0, 1)), out: 1 - ease.whip(clampNum((sp - 0.85) / 0.15, 0, 1)), active: pVal >= start && pVal <= end };
     },
+    cameraRig,
     transition,
     text,
     particles,
@@ -931,6 +1040,8 @@ function render(message) {
   canvas.width = W; canvas.height = H;
   ctx = canvas.getContext("2d", { alpha: true });
   if (!ctx) throw new Error("Canvas 2D context could not be restored.");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.clearRect(0, 0, W, H);
 
   const S = Math.min(W, H) / 1080;

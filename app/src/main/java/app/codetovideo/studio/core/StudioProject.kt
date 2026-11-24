@@ -27,7 +27,7 @@ data class RenderSettings(
 
 data class StudioProject(
     val projectId: String = UUID.randomUUID().toString(),
-    val name: String = "iOS 26 Liquid Glass Hero",
+    val name: String = "iOS 26 Liquid Glass Keynote",
     val sourceBody: String = DEFAULT_SOURCE,
     val seed: Int = 26,
     val propsValues: Map<String, String> = emptyMap(),
@@ -36,7 +36,7 @@ data class StudioProject(
     val updatedAtEpochMs: Long = System.currentTimeMillis()
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
-        put("schemaVersion", 4)
+        put("schemaVersion", 5)
         put("projectId", projectId)
         put("name", name)
         put("sourceBody", sourceBody)
@@ -88,24 +88,25 @@ data class StudioProject(
 
 const val DEFAULT_SOURCE = """/*<studio-meta>
 {
-  "schemaVersion": 4,
-  "title": "iOS 26 Liquid Glass Hero",
+  "schemaVersion": 5,
+  "title": "iOS 26 Liquid Glass Keynote",
   "defaultDurationSeconds": 5,
   "seed": 26,
   "props": [
-    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.4"},
+    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.5"},
     {"key":"title","label":"Judul Utama","type":"text","default":"Desain kaca yang"},
     {"key":"highlight","label":"Kata Aksen","type":"text","default":"mengalir."},
     {"key":"accent","label":"Warna Aksen","type":"color","default":"#DCE8F5"}
   ],
   "audio": {
-    "ambience": "ios_glass_chimes",
-    "ambienceVolume": 0.24,
+    "ambience": "keynote_pulse",
+    "ambienceVolume": 0.20,
     "cues": [
-      {"p": 0.02, "sfx": "liquid_morph", "gain": 0.80},
-      {"p": 0.24, "sfx": "water_drop", "gain": 0.78, "pitch": 1.04},
-      {"p": 0.44, "sfx": "glass_tap", "gain": 0.78, "pitch": 1.18},
-      {"p": 0.76, "sfx": "glass_shimmer", "gain": 0.88}
+      {"p": 0.01, "sfx": "air_whoosh", "gain": 0.72},
+      {"p": 0.22, "sfx": "felt_pluck", "gain": 0.78, "pitch": 1.0},
+      {"p": 0.40, "sfx": "felt_pluck", "gain": 0.78, "pitch": 1.15},
+      {"p": 0.62, "sfx": "tactile_tick", "gain": 0.68, "pitch": 1.05},
+      {"p": 0.76, "sfx": "crystal_bloom", "gain": 0.88}
     ]
   }
 }
@@ -114,24 +115,22 @@ const val DEFAULT_SOURCE = """/*<studio-meta>
 const accent = String(P.accent || "#DCE8F5");
 const pad = Math.min(W, H) * 0.068;
 const innerW = W - pad * 2;
-const settle = spring({ frame, fps, config: { damping: 16, stiffness: 125 } });
-const drift = cam.shake(t, 5 * S, 0.75);
-const cState = {
-  x: drift.x,
-  y: drift.y + interpolate(p, [0, 1], [-14 * S, 14 * S]),
-  zoom: interpolate(settle, [0, 1], [1.12, 1.0]) + p * 0.035,
-  rot: drift.rot
-};
+const cState = fx.cameraRig(p, [
+  { p: 0.0, x: 0, y: -20 * S, zoom: 1.12, rot: -0.008 },
+  { p: 0.45, x: 0, y: 0, zoom: 1.0, rot: 0.0 },
+  { p: 1.0, x: 10 * S, y: 14 * S, zoom: 1.04, rot: 0.006 }
+], 4 * S);
 
-ui.drawMeshBg(ctx, W, H, "#090C12", [
-  { x: 0.82, y: 0.16, r: 0.78, col: accent, a: 0.32 },
-  { x: 0.16, y: 0.84, r: 0.74, col: "#7497C4", a: 0.26 },
-  { x: 0.50, y: 0.52, r: 0.58, col: "#FFFFFF", a: 0.08 }
+ui.drawMeshBg(ctx, W, H, "#080B11", [
+  { x: 0.82, y: 0.15, r: 0.78, col: accent, a: 0.30 },
+  { x: 0.16, y: 0.84, r: 0.74, col: "#4AA3FF", a: 0.22 },
+  { x: 0.50, y: 0.52, r: 0.58, col: "#FFFFFF", a: 0.07 }
 ], t);
 
 ctx.save();
-cam.apply(ctx, cState, 0.55);
-fx.particles.bokeh(ctx, 12, accent, 0.14);
+cam.apply(ctx, cState, 0.35);
+ui.drawGrid(ctx, W, H, 130 * S, "rgba(255,255,255,0.032)");
+fx.particles.bokeh(ctx, 14, accent, 0.16);
 ctx.restore();
 
 ctx.save();
@@ -140,29 +139,29 @@ cam.apply(ctx, cState, 1.0);
 const pillP = fx.stagger(frame, 0, 4);
 ctx.save();
 ctx.globalAlpha = ui.clamp(pillP, 0, 1);
-ctx.translate(0, (1 - pillP) * 20 * S);
-ui.drawPill(ctx, pad, H * 0.17, String(P.eyebrow || "RENDER VIDEO CODE V0.4"), "rgba(255,255,255,0.14)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
+ctx.translate(0, (1 - pillP) * 18 * S);
+ui.drawPill(ctx, pad, H * 0.14, String(P.eyebrow || "RENDER VIDEO CODE V0.5"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
 ctx.restore();
 
 const fSize = Math.round(80 * S);
 const used = ui.drawRichText(ctx, [
   { text: String(P.title || "Desain kaca yang") },
   { text: String(P.highlight || "mengalir."), italic: true, color: accent }
-], pad, H * 0.24, innerW, fSize, fSize * 1.18, "#FFFFFF", ui.seg(p, 0.06, 0.42), "left");
+], pad, H * 0.21, innerW, fSize, fSize * 1.18, "#FFFFFF", ui.seg(p, 0.05, 0.42), "left");
 
 const cards = [
-  { title: "Liquid Glass Specular", sub: "Chromatic rim + moving sheen", val: 0.96, lbl: "96%" },
-  { title: "26 SFX + Motion Director", sub: "Transitions, Charts, 3D & AAC", val: 1.00, lbl: "100%" }
+  { title: "Seamless Liquid Glass", sub: "Zero-seam optical sheen + chromatic rim", val: 0.96, lbl: "96%" },
+  { title: "32 Mastered DSP SFX", sub: "Stereo Reverb + Pink Noise + Felt Pluck", val: 1.00, lbl: "100%" }
 ];
 const cH = 176 * S;
-const cStart = H * 0.24 + used + 58 * S;
+const cStart = H * 0.21 + used + 54 * S;
 for (let i = 0; i < cards.length; i++) {
-  const sp = fx.stagger(frame, i + 2, Math.round(fps * 0.26));
+  const sp = fx.stagger(frame, i + 2, Math.round(fps * 0.22));
   const cy = cStart + i * (cH + 26 * S);
   ctx.save();
   ctx.globalAlpha = ui.clamp(sp * 1.25, 0, 1);
-  ctx.translate(0, (1 - sp) * 62 * S);
-  ui.drawLiquidGlass(ctx, pad, cy, innerW, cH, 28 * S, { light: false, sweep: (p * 1.4 + i * 0.35) % 1 });
+  ctx.translate(0, (1 - sp) * 58 * S);
+  ui.drawLiquidGlass(ctx, pad, cy, innerW, cH, 28 * S, { light: false, sweep: (p * 1.5 + i * 0.35) % 1 });
 
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -174,12 +173,24 @@ for (let i = 0; i < cards.length; i++) {
   ctx.font = "400 " + Math.max(12, Math.round(23 * S)) + "px sans-serif";
   ctx.fillText(cards[i].sub, pad + 32 * S, cy + cH * 0.67, innerW - 180 * S);
 
-  const rp = ease.liquid(ui.seg(p, 0.24 + i * 0.14, 0.86));
-  ui.drawRing(ctx, pad + innerW - 76 * S, cy + cH * 0.5, 44 * S, cards[i].val * rp, accent, cards[i].lbl, "rgba(255,255,255,0.12)", "#FFFFFF", 6 * S);
+  const rp = ease.liquid(ui.seg(p, 0.16 + i * 0.12, 0.92));
+  ui.drawRing(ctx, pad + innerW - 76 * S, cy + cH * 0.5, 44 * S, cards[i].val * rp, accent, Math.round(cards[i].val * rp * 100) + "%", "rgba(255,255,255,0.12)", "#FFFFFF", 6 * S);
   ctx.restore();
 }
+
+// Secondary living spline footer card (prevents dead hold & fills 9:16!)
+const fCardY = cStart + 2 * (cH + 26 * S) + 12 * S;
+const fCardH = 220 * S;
+const fSp = fx.stagger(frame, 6, Math.round(fps * 0.16));
+ctx.save();
+ctx.globalAlpha = ui.clamp(fSp * 1.25, 0, 1);
+ctx.translate(0, (1 - fSp) * 52 * S);
+ui.drawLiquidGlass(ctx, pad, fCardY, innerW, fCardH, 28 * S, { light: false, sweep: (p * 1.2 + 0.6) % 1 });
+fx.chart.spline(ctx, [22, 34, 38, 55, 68, 82, 96], pad + 34 * S, fCardY + 42 * S, innerW - 68 * S, fCardH - 84 * S, "#5CE1A8", ui.seg(p, 0.25, 0.95));
 ctx.restore();
 
-ui.drawGrain(ctx, W, H, rand, 70, 0.032);
+ctx.restore();
+ui.drawVignette(ctx, W, H, 0.32, false);
+ui.drawGrain(ctx, W, H, rand, 70, 0.03);
 ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, "#FFFFFF", "rgba(255,255,255,0.14)");
 """

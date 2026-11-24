@@ -987,7 +987,7 @@ fun StudioApp(activity: MainActivity) {
                 activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> input.copyTo(output) }
                     ?: throw IllegalStateException("File tujuan tidak bisa dibuka.")
             }
-        }.onSuccess { Toast.makeText(activity, "Dokumentasi v0.4 disimpan", Toast.LENGTH_SHORT).show() }
+        }.onSuccess { Toast.makeText(activity, "Dokumentasi v0.5 disimpan", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(activity, it.message ?: "Gagal menyimpan Docs", Toast.LENGTH_LONG).show() }
     }
 
@@ -1036,7 +1036,7 @@ fun StudioApp(activity: MainActivity) {
                                 externalRefreshTick = previewTick,
                                 onPreview = { activity.canvasRuntime.preview(project, it) },
                                 onRender = {
-                                    renderMessage = "Mensintesis audio 26 SFX & menyiapkan encoder MP4…"
+                                    renderMessage = "Mensintesis audio 32 SFX & menyiapkan encoder MP4…"
                                     isRendering = true
                                     renderDone = 0
                                     activity.renderController.render(
@@ -1099,7 +1099,7 @@ fun StudioApp(activity: MainActivity) {
                                 onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
                                 onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
                             )
-                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v0.4.md") })
+                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v0.5.md") })
                         }
                     }
                 }
@@ -1186,7 +1186,7 @@ private fun TopGlassHeader(
             ) {
                 Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
                 Spacer(Modifier.width(5.dp))
-                Text("v0.4", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("v0.5", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
@@ -1225,7 +1225,7 @@ private fun EditorScreen(
     var showTemplates by remember { mutableStateOf(false) }
 
     PageColumn {
-        SectionHeader("Editor", "Engine v0.4 · Motion Director, Liquid Glass, 3D & 26 SFX.", pal)
+        SectionHeader("Editor", "Engine v0.5 · Motion Director, Liquid Glass, 3D & 32 SFX.", pal)
         GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
@@ -1287,7 +1287,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { showTemplates = false },
             containerColor = pal.dialogBg,
-            title = { Text("Template v0.4 Motion Director", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text("Template v0.5 Motion Director", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     GlassSecondaryButton("iOS 26 Liquid Glass Hero (5s)", pal, onClick = {
@@ -1295,15 +1295,15 @@ private fun EditorScreen(
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                     GlassSecondaryButton("Kinetic Data Storytelling · Spline + Counter (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "Kinetic Data Storytelling", sourceBody = DATA_STORY_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        onProjectChange(project.copy(name = "Kinetic Data Storytelling", sourceBody = app.codetovideo.studio.core.StudioTemplates.DATA_STORY, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                     GlassSecondaryButton("3D Botanical Orbit · Micro 3D Engine (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D Botanical Orbit", sourceBody = BOTANICAL_3D_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        onProjectChange(project.copy(name = "3D Botanical Orbit", sourceBody = app.codetovideo.studio.core.StudioTemplates.BOTANICAL_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                     GlassSecondaryButton("Cute Garden Story · Stagger + Confetti (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "Cute Garden Story", sourceBody = CUTE_STORY_TEMPLATE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        onProjectChange(project.copy(name = "Cute Garden Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.CUTE_STORY, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                 }
@@ -1312,228 +1312,6 @@ private fun EditorScreen(
         )
     }
 }
-
-private val DATA_STORY_TEMPLATE = """/*<studio-meta>
-{
-  "schemaVersion": 4,
-  "title": "Kinetic Data Storytelling",
-  "defaultDurationSeconds": 10,
-  "seed": 44,
-  "props": [
-    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
-    {"key":"metric","label":"Label Grafik","type":"text","default":"PERTUMBUHAN TANAMAN"},
-    {"key":"accent","label":"Warna Aksen","type":"color","default":"#32D74B"}
-  ],
-  "audio": {
-    "ambience": "apple_keynote_minimal",
-    "ambienceVolume": 0.22,
-    "cues": [
-      {"p": 0.02, "sfx": "liquid_morph", "gain": 0.78},
-      {"p": 0.22, "sfx": "tick", "gain": 0.68, "pitch": 1.05},
-      {"p": 0.46, "sfx": "glass_slide", "gain": 0.90},
-      {"p": 0.62, "sfx": "water_drop", "gain": 0.76},
-      {"p": 0.84, "sfx": "glass_shimmer", "gain": 0.88}
-    ]
-  }
-}
-</studio-meta>*/
-
-const accent = String(P.accent || "#32D74B");
-const pad = Math.min(W, H) * 0.068;
-const innerW = W - pad * 2;
-
-function drawSceneA(sp) {
-  ui.drawMeshBg(ctx, W, H, "#070B10", [
-    { x: 0.84, y: 0.16, r: 0.75, col: accent, a: 0.28 },
-    { x: 0.16, y: 0.82, r: 0.70, col: "#4AA3FF", a: 0.22 }
-  ], t);
-  ctx.save();
-  cam.apply(ctx, { x: 0, y: interpolate(sp, [0, 1], [-18 * S, 18 * S]), zoom: interpolate(sp, [0, 0.3], [1.1, 1.0], { easing: ease.snap }), rot: 0 }, 1.0);
-  ui.drawPill(ctx, pad, H * 0.14, String(P.metric || "PERTUMBUHAN TANAMAN"), "rgba(255,255,255,0.12)", accent, Math.max(12, Math.round(21 * S)));
-  const countVal = interpolate(sp, [0.06, 0.78], [12, 98], { easing: ease.apple });
-  fx.text.counterRoll(ctx, countVal, pad, H * 0.21, Math.round(148 * S), "#FFFFFF", "%", "left");
-
-  const cardY = H * 0.44;
-  const cardH = 380 * S;
-  ui.drawLiquidGlass(ctx, pad, cardY, innerW, cardH, 30 * S, { light: false, sweep: sp });
-  fx.chart.spline(ctx, [18, 26, 24, 42, 58, 54, 78, 96], pad + 34 * S, cardY + 64 * S, innerW - 68 * S, cardH - 120 * S, accent, ui.seg(sp, 0.12, 0.88));
-  ctx.restore();
-}
-
-function drawSceneB(sp) {
-  ui.drawMeshBg(ctx, W, H, "#F2F5FA", [
-    { x: 0.80, y: 0.18, r: 0.72, col: accent, a: 0.24 },
-    { x: 0.18, y: 0.84, r: 0.68, col: "#A6C8FF", a: 0.28 }
-  ], t);
-  ctx.save();
-  cam.apply(ctx, { x: 0, y: 0, zoom: interpolate(sp, [0, 1], [1.06, 1.0], { easing: ease.apple }), rot: 0 }, 1.0);
-  const fS = Math.round(76 * S);
-  const used = ui.drawRichText(ctx, [
-    { text: "Hasil nyata dari perawatan" },
-    { text: "konsisten.", italic: true, color: accent }
-  ], pad, H * 0.18, innerW, fS, fS * 1.18, "#0E141D", ui.seg(sp, 0.04, 0.46), "left");
-
-  const cardY = H * 0.18 + used + 56 * S;
-  const cardH = 360 * S;
-  ui.drawLiquidGlass(ctx, pad, cardY, innerW, cardH, 30 * S, { light: true, sweep: sp });
-  fx.chart.bars(ctx, [
-    { value: 0.42, label: "W1", color: "#9EB2C8" },
-    { value: 0.66, label: "W2", color: "#72B5E8" },
-    { value: 0.84, label: "W3", color: "#4AD08A" },
-    { value: 0.98, label: "W4", color: accent }
-  ], pad + 42 * S, cardY + 52 * S, innerW - 84 * S, cardH - 120 * S, Math.round(fps * 5.0));
-
-  fx.text.kineticMask(ctx, String(P.brand || "Seflorner") + ".", W * 0.5, cardY + cardH + 64 * S, Math.round(58 * S), "#0E141D", ui.seg(sp, 0.42, 0.86), "center");
-  ctx.restore();
-}
-
-if (p < 0.46) drawSceneA(ui.seg(p, 0.0, 0.54));
-else if (p < 0.56) fx.transition.glassSlide(ctx, ui.seg(p, 0.46, 0.56), () => drawSceneA(ui.seg(p, 0.0, 0.54)), () => drawSceneB(ui.seg(p, 0.46, 1.0)));
-else drawSceneB(ui.seg(p, 0.46, 1.0));
-ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(120,140,160,0.22)");
-"""
-
-private val BOTANICAL_3D_TEMPLATE = """/*<studio-meta>
-{
-  "schemaVersion": 4,
-  "title": "3D Botanical Orbit",
-  "defaultDurationSeconds": 10,
-  "seed": 77,
-  "props": [
-    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
-    {"key":"roseColor","label":"Warna Mawar","type":"color","default":"#E03A58"},
-    {"key":"leafColor","label":"Warna Daun","type":"color","default":"#2B9B5E"}
-  ],
-  "audio": {
-    "ambience": "forest_air",
-    "ambienceVolume": 0.24,
-    "cues": [
-      {"p": 0.02, "sfx": "swoosh_deep", "gain": 0.78},
-      {"p": 0.28, "sfx": "bloom", "gain": 0.86},
-      {"p": 0.65, "sfx": "sparkle", "gain": 0.78},
-      {"p": 0.86, "sfx": "chime", "gain": 0.88}
-    ]
-  }
-}
-</studio-meta>*/
-
-const roseCol = String(P.roseColor || "#E03A58");
-const leafCol = String(P.leafColor || "#2B9B5E");
-const pad = Math.min(W, H) * 0.068;
-const innerW = W - pad * 2;
-
-ui.drawMeshBg(ctx, W, H, "#050B08", [
-  { x: 0.5, y: 0.42, r: 0.68, col: roseCol, a: 0.24 },
-  { x: 0.2, y: 0.82, r: 0.62, col: leafCol, a: 0.20 }
-], t);
-
-const az = -0.4 + p * Math.PI * 2.2;
-const elev = 0.28 + Math.sin(p * Math.PI) * 0.34;
-const dist = (W > H ? 5.2 : 6.6) - Math.sin(p * Math.PI) * 1.1;
-const eye = [dist * Math.cos(elev) * Math.sin(az), 0.35 + dist * Math.sin(elev), dist * Math.cos(elev) * Math.cos(az)];
-const sc = d3.createScene(eye, [0, 0.35, 0], 0.72, W, H, 0.44);
-
-// 28 kelopak mawar 3D menggunakan Micro 3D Engine v0.4
-const bloom = ease.apple(ui.seg(p, 0.05, 0.62));
-const golden = 2.399963229728653;
-for (let i = 0; i < 28; i++) {
-  const lay = i / 27;
-  const ang = i * golden;
-  const pb = ease.snap(ui.seg(bloom, (1 - lay) * 0.3, 0.7 + (1 - lay) * 0.3));
-  const rad = ui.lerp(0.08, 0.48, lay);
-  const pH = ui.lerp(0.45, 0.95, lay);
-  const pW = ui.lerp(0.28, 0.72, lay);
-  const pitch = ui.lerp(0.15, 0.95 * lay + 0.2, pb);
-  const pts = [
-    [-pW * 0.25, 0, 0], [pW * 0.25, 0, 0], [pW * 0.52, pH * 0.62, -0.12],
-    [0, pH, 0.08 * pb], [-pW * 0.52, pH * 0.62, -0.12]
-  ].map((pt) => {
-    let q = d3.rotX(pt, pitch);
-    q = [q[0], q[1] + (1 - lay) * 0.26, q[2] + rad];
-    return d3.rotY(q, ang);
-  });
-  sc.poly(pts, roseCol, { col2: "#FF9EB2", twoSided: true, spec: 24, zBias: -lay * 0.02 });
-}
-
-// 4 daun hijau 3D
-for (let i = 0; i < 4; i++) {
-  const a = i * Math.PI * 0.5 + 0.4;
-  const pts = [[0, -0.1, 0], [0.42, -0.15, -0.25], [1.1, -0.35, 0], [0.42, -0.15, 0.25]].map((pt) => d3.rotY(pt, a));
-  sc.poly(pts, leafCol, { col2: "#62D492", twoSided: true, spec: 20 });
-}
-
-// Orbit partikel emas 3D
-for (let i = 0; i < 16; i++) {
-  const oa = rand(300 + i) * Math.PI * 2 + t * 0.4;
-  const rr = 1.4 + rand(320 + i) * 1.4;
-  sc.orb([Math.cos(oa) * rr, (rand(340 + i) - 0.3) * 2.2, Math.sin(oa) * rr], 0.04, "#FFE08A", 0.85);
-}
-
-sc.render(ctx, S);
-fx.particles.petals(ctx, 10, roseCol, 0.25);
-
-const footY = H - pad - 210 * S;
-ui.drawLiquidGlass(ctx, pad, footY, innerW, 155 * S, 26 * S, { light: false, sweep: p });
-fx.text.wordStagger(ctx, String(P.brand || "Seflorner") + " · 3D Rosa", pad + 30 * S, footY + 34 * S, innerW - 60 * S, Math.round(44 * S), "#FFFFFF", 6, "left");
-fx.text.typewriter(ctx, "GOLDEN ANGLE 137.5° · Z-BUFFER ENGINE", pad + 30 * S, footY + 98 * S, Math.round(21 * S), "#A8DEC0", ui.seg(p, 0.15, 0.72), true);
-ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, roseCol, "rgba(255,255,255,0.14)");
-"""
-
-private val CUTE_STORY_TEMPLATE = """/*<studio-meta>
-{
-  "schemaVersion": 4,
-  "title": "Cute Garden Story",
-  "defaultDurationSeconds": 10,
-  "seed": 55,
-  "props": [
-    {"key":"line1","label":"Kalimat 1","type":"text","default":"Mulai dari satu pot mungil di rumah."},
-    {"key":"line2","label":"Kalimat 2","type":"text","default":"Siram sabar setiap pagi sampai mekar!"},
-    {"key":"accent","label":"Warna Hijau","type":"color","default":"#2EA864"}
-  ],
-  "audio": {
-    "ambience": "warm_pad",
-    "ambienceVolume": 0.22,
-    "cues": [
-      {"p": 0.02, "sfx": "pop", "gain": 0.78},
-      {"p": 0.24, "sfx": "water_drop", "gain": 0.82, "pitch": 1.05},
-      {"p": 0.50, "sfx": "liquid_morph", "gain": 0.84},
-      {"p": 0.78, "sfx": "sparkle", "gain": 0.86}
-    ]
-  }
-}
-</studio-meta>*/
-
-const accent = String(P.accent || "#2EA864");
-const pad = Math.min(W, H) * 0.068;
-const innerW = W - pad * 2;
-
-function drawPart1(sp) {
-  ui.drawMeshBg(ctx, W, H, "#FFF7EA", [
-    { x: 0.82, y: 0.16, r: 0.68, col: "#FFD166", a: 0.34 },
-    { x: 0.18, y: 0.84, r: 0.64, col: accent, a: 0.22 }
-  ], t);
-  ui.drawLiquidGlass(ctx, pad, pad + 40 * S, innerW, 220 * S, 28 * S, { light: true, sweep: sp });
-  fx.text.wordStagger(ctx, String(P.line1 || "Mulai dari satu pot mungil di rumah."), pad + 32 * S, pad + 78 * S, innerW - 64 * S, Math.round(48 * S), "#1D2C22", 2, "left");
-  const dropY = interpolate(sp, [0.15, 0.85], [H * 0.42, H * 0.66], { easing: ease.apple });
-  ui.drawWaterDrop(ctx, W * 0.5, dropY, 76 * S, "#64C8F5");
-}
-
-function drawPart2(sp) {
-  ui.drawMeshBg(ctx, W, H, "#F1FBF3", [
-    { x: 0.5, y: 0.5, r: 0.75, col: accent, a: 0.26 },
-    { x: 0.8, y: 0.2, r: 0.55, col: "#FF8FA3", a: 0.24 }
-  ], t);
-  ui.drawLiquidGlass(ctx, pad, pad + 40 * S, innerW, 220 * S, 28 * S, { light: true, sweep: sp });
-  fx.text.wordStagger(ctx, String(P.line2 || "Siram sabar setiap pagi sampai mekar!"), pad + 32 * S, pad + 78 * S, innerW - 64 * S, Math.round(48 * S), "#1D2C22", Math.round(fps * 4.8), "left");
-  fx.text.highlightSweep(ctx, "MEKAR PENUH!", W * 0.5, H * 0.54, Math.round(64 * S), accent, "#FFFFFF", ui.seg(sp, 0.20, 0.62), "center");
-  fx.particles.confetti(ctx, 22, ["#FF6B6B", "#FFD166", accent, "#56CFE1"], ui.seg(sp, 0.25, 0.55));
-}
-
-if (p < 0.46) drawPart1(ui.seg(p, 0.0, 0.54));
-else if (p < 0.56) fx.transition.liquidWipe(ctx, ui.seg(p, 0.46, 0.56), () => drawPart1(ui.seg(p, 0.0, 0.54)), () => drawPart2(ui.seg(p, 0.46, 1.0)));
-else drawPart2(ui.seg(p, 0.46, 1.0));
-ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(29,44,34,0.14)");
-"""
 
 @Composable
 private fun PropsPanel(
@@ -1625,7 +1403,7 @@ private fun RenderScreen(
     }
 
     PageColumn {
-        SectionHeader("Render Studio", "H.264 + 26 SFX AAC / MP4 · pemrosesan lokal offline", pal)
+        SectionHeader("Render Studio", "H.264 + 32 SFX AAC / MP4 · pemrosesan lokal offline", pal)
         GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("LIVE CANVAS PREVIEW", color = pal.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
@@ -1886,11 +1664,11 @@ private fun DocsScreen(activity: MainActivity, pal: GlassPalette, onSave: () -> 
     val content = remember { activity.assets.open("docs/skill.md").bufferedReader().use { it.readText() } }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     PageColumn {
-        SectionHeader("Docs v0.4", "Kitab Motion Director, Liquid Glass, 3D & 26 SFX.", pal)
+        SectionHeader("Docs v0.5", "Kitab Motion Director, Liquid Glass, 3D & 32 SFX.", pal)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GlassPrimaryButton("Salin Docs", pal, onClick = {
                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(content))
-                Toast.makeText(activity, "Docs v0.4 disalin", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Docs v0.5 disalin", Toast.LENGTH_SHORT).show()
             }, modifier = Modifier.weight(1f))
             GlassSecondaryButton("Unduh .md", pal, onClick = onSave, modifier = Modifier.weight(1f))
         }
