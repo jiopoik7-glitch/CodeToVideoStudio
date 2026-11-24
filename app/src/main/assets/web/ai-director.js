@@ -2,7 +2,7 @@
   if (window.__CTV_AI_DIRECTOR_LOADED__) return;
   window.__CTV_AI_DIRECTOR_LOADED__ = true;
 
-  const DEFAULT_PROXY_URL = "https://ctv-ai-proxy.USERNAME-KAMU.workers.dev/generate";
+  const DEFAULT_PROXY_URL = "https://URL-WORKER-KAMU.workers.dev/generate";
   const STORAGE_KEY = "ctv_ai_director_config_v1";
 
   const DEFAULT_CFG = {
