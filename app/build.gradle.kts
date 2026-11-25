@@ -11,8 +11,8 @@ android {
         applicationId = "app.codetovideo.studio"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.0.0"
+        versionCode = 13
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

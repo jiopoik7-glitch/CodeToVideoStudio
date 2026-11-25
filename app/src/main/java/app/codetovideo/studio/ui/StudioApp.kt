@@ -900,7 +900,7 @@ fun StudioApp(activity: MainActivity) {
                 activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> input.copyTo(output) }
                     ?: throw IllegalStateException("File tujuan tidak bisa dibuka.")
             }
-        }.onSuccess { Toast.makeText(activity, "Dokumentasi v1.0 disimpan", Toast.LENGTH_SHORT).show() }
+        }.onSuccess { Toast.makeText(activity, "Dokumentasi v1.1 disimpan", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(activity, it.message ?: "Gagal menyimpan Docs", Toast.LENGTH_LONG).show() }
     }
 
@@ -1064,7 +1064,7 @@ fun StudioApp(activity: MainActivity) {
                                 onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
                                 onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
                             )
-                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v1.0.md") })
+                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v1.1.md") })
                         }
                     }
                 }
@@ -1166,7 +1166,7 @@ private fun TopGlassHeader(
             ) {
                 Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
                 Spacer(Modifier.width(5.dp))
-                Text("v1.0", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("v1.1", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
@@ -1220,7 +1220,7 @@ private fun EditorScreen(
     var showAudition by remember { mutableStateOf(false) }
 
     PageColumn {
-        SectionHeader("Editor Pro", "Engine v1.0 · Cinema 3D PBR · 36 Studio Acoustic SFX, Live Render & Voiceover.", pal)
+        SectionHeader("Editor Pro", "Engine v1.1 · 4-Pass GPU 3D · 36 Studio Acoustic SFX, Live Render & Voiceover.", pal)
         GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Column(Modifier.weight(1f)) {
@@ -1305,31 +1305,31 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { showTemplates = false },
             containerColor = pal.dialogBg,
-            title = { Text("Template v1.0 Cinema 3D Motion Director", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text("Template v1.1 Blender-Grade 3D", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassSecondaryButton("iOS 26 Liquid Glass Hero (5s)", pal, onClick = {
+                    GlassSecondaryButton("3D Pixar Garden Story · Bloom + DoF (15s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "3D Pixar Garden Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.PIXAR_GARDEN_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 15)))
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("3D Anime Cel-Shaded · Toon + Outline (10s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "3D Anime Cel-Shaded", sourceBody = app.codetovideo.studio.core.StudioTemplates.ANIME_CEL_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("3D Plant vs Pest · Creatures + AR Pins (15s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "3D Plant vs Pest Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.PLANT_VS_PEST_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 15)))
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("3D Apple Hardware · Live 2D→3D Screen (10s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "3D Apple Hardware", sourceBody = app.codetovideo.studio.core.StudioTemplates.APPLE_HARDWARE_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("3D Liquid Glass · GPU Raymarch Shader (10s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "3D Liquid Glass Shader", sourceBody = app.codetovideo.studio.core.StudioTemplates.LIQUID_GLASS_SHADER, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("iOS 26 Liquid Glass Hero · 2D Bento (5s)", pal, onClick = {
                         onProjectChange(project.copy(name = "iOS 26 Liquid Glass Hero", sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 5)))
-                        showTemplates = false
-                    }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("Swiss Data Editorial · Spline + Counter (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "Swiss Data Editorial", sourceBody = app.codetovideo.studio.core.StudioTemplates.DATA_STORY, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
-                        showTemplates = false
-                    }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("3D Character Story · Little Botanist (15s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D Character Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.CHARACTER_STORY_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 15)))
-                        showTemplates = false
-                    }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("3D GPU Chrome Monolith · WebGL (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D GPU Chrome Monolith", sourceBody = app.codetovideo.studio.core.StudioTemplates.CHROME_3D_GPU, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
-                        showTemplates = false
-                    }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("3D GPU Velvet Rose · WebGL (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D Velvet Rose Cinema", sourceBody = app.codetovideo.studio.core.StudioTemplates.BOTANICAL_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
-                        showTemplates = false
-                    }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("Illustrated Botanical Story (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "Illustrated Botanical Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.CUTE_STORY, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                 }
@@ -1424,10 +1424,12 @@ private fun RenderScreen(
     }
     val renderScroll = rememberScrollState()
     LaunchedEffect(isRendering) {
-        if (isRendering) renderScroll.animateScrollTo(0)
+        if (isRendering) { isPlayingPreview = false; renderScroll.animateScrollTo(0) }
         else if (ready) onPreview(previewFrame)
     }
     var previewExpanded by remember { mutableStateOf(false) }
+    var isPlayingPreview by remember { mutableStateOf(false) }
+    var previewHalfSpeed by remember { mutableStateOf(false) }
     var showAudition by remember { mutableStateOf(false) }
     val previewHeight by animateDpAsState(if (previewExpanded) 480.dp else 270.dp, spring(0.75f, 380f), label = "prev_h")
 
@@ -1442,6 +1444,16 @@ private fun RenderScreen(
     }
     LaunchedEffect(project.projectId, project.sourceBody, project.propsValues, project.renderSettings, previewFrame, ready, externalRefreshTick) {
         if (ready && !isRendering) onPreview(previewFrame)
+    }
+    LaunchedEffect(isPlayingPreview, isRendering, ready, previewHalfSpeed, project.renderSettings) {
+        if (!isPlayingPreview || isRendering || !ready) return@LaunchedEffect
+        val totalF = project.renderSettings.totalFrames().coerceAtLeast(1)
+        val stepFrames = (project.renderSettings.fps / 10).coerceAtLeast(1)
+        val tickMs = if (previewHalfSpeed) 200L else 100L
+        while (isPlayingPreview && !isRendering && ready) {
+            previewFrame = (previewFrame + stepFrames) % totalF
+            delay(tickMs)
+        }
     }
 
     // Telemetry kalkulasi live FPS & ETA selama rendering
@@ -1531,7 +1543,29 @@ private fun RenderScreen(
                 valueRange = 0f..(totalF - 1).coerceAtLeast(1).toFloat(),
                 pal = pal
             )
-            GlassSecondaryButton("Refresh Preview", pal, onClick = { onPreview(previewFrame) }, enabled = ready && !isRendering, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                GlassPrimaryButton(
+                    text = if (isPlayingPreview) "⏸ Jeda" else "▶ Putar",
+                    pal = pal,
+                    onClick = { isPlayingPreview = !isPlayingPreview },
+                    enabled = ready && !isRendering,
+                    modifier = Modifier.weight(1.3f)
+                )
+                GlassSecondaryButton(
+                    text = if (previewHalfSpeed) "0.5×" else "1×",
+                    pal = pal,
+                    onClick = { previewHalfSpeed = !previewHalfSpeed },
+                    enabled = ready && !isRendering,
+                    modifier = Modifier.weight(0.7f)
+                )
+                GlassSecondaryButton(
+                    text = "Refresh",
+                    pal = pal,
+                    onClick = { isPlayingPreview = false; onPreview(previewFrame) },
+                    enabled = ready && !isRendering,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         // KARTU AUDIO MIXER, REAL SFX AUDITION & IMPORT VOICEOVER
@@ -1840,11 +1874,11 @@ private fun DocsScreen(activity: MainActivity, pal: GlassPalette, onSave: () -> 
     val content = remember { activity.assets.open("docs/skill.md").bufferedReader().use { it.readText() } }
     val clipboard = LocalClipboardManager.current
     PageColumn {
-        SectionHeader("Docs v1.0", "Kitab Shadow-Mapped 3D PBR, Character Rigging & Motion Director.", pal)
+        SectionHeader("Docs v1.1", "Kitab Blender-Grade 4-Pass GPU 3D, 12 PBR Shaders & Motion Director.", pal)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GlassPrimaryButton("Salin Docs", pal, onClick = {
                 clipboard.setText(AnnotatedString(content))
-                Toast.makeText(activity, "Docs v1.0 disalin", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Docs v1.1 disalin", Toast.LENGTH_SHORT).show()
             }, modifier = Modifier.weight(1f))
             GlassSecondaryButton("Unduh .md", pal, onClick = onSave, modifier = Modifier.weight(1f))
         }

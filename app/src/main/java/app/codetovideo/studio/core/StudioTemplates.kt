@@ -1,18 +1,15 @@
 package app.codetovideo.studio.core
 
 object StudioTemplates {
-    const val CHARACTER_STORY_3D = """/*<studio-meta>
+    const val PIXAR_GARDEN_3D = """/*<studio-meta>
 {
-  "schemaVersion": 10,
-  "title": "3D Character Story · Little Botanist",
+  "schemaVersion": 11,
+  "title": "3D Pixar Garden Story",
   "defaultDurationSeconds": 15,
-  "seed": 91,
+  "seed": 101,
   "props": [
     {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
-    {"key":"act1Text","label":"Cerita Bab 1","type":"text","default":"Halo! Yuk rawat satu tunas kecil hari ini."},
-    {"key":"act2Text","label":"Cerita Bab 2","type":"text","default":"Beri air secukupnya & cahaya pagi yang hangat."},
-    {"key":"act3Text","label":"Cerita Bab 3","type":"text","default":"Rawat dengan sabar, mekarnya bikin bahagia!"},
-    {"key":"roseColor","label":"Warna Mawar","type":"color","default":"#D92344"},
+    {"key":"roseColor","label":"Warna Mawar","type":"color","default":"#DF2045"},
     {"key":"overallColor","label":"Warna Baju","type":"color","default":"#1B8A4B"}
   ],
   "audio": {
@@ -20,188 +17,394 @@ object StudioTemplates {
     "ambienceVolume": 0.16,
     "cues": [
       {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.48},
-      {"p": 0.06, "sfx": "kalimba_note", "gain": 0.54, "pitch": 1.0},
+      {"p": 0.05, "sfx": "kalimba_note", "gain": 0.54, "pitch": 1.0},
       {"p": 0.34, "sfx": "air_whoosh", "gain": 0.52},
-      {"p": 0.43, "sfx": "water_drop", "gain": 0.56, "pitch": 1.0},
-      {"p": 0.52, "sfx": "water_drop", "gain": 0.52, "pitch": 1.15},
-      {"p": 0.68, "sfx": "whip", "gain": 0.52},
-      {"p": 0.76, "sfx": "kalimba_note", "gain": 0.56, "pitch": 1.25},
+      {"p": 0.42, "sfx": "water_drop", "gain": 0.56, "pitch": 1.0},
+      {"p": 0.52, "sfx": "water_drop", "gain": 0.52, "pitch": 1.16},
+      {"p": 0.67, "sfx": "glass_slide", "gain": 0.54},
+      {"p": 0.74, "sfx": "kalimba_note", "gain": 0.56, "pitch": 1.25},
+      {"p": 0.86, "sfx": "crystal_bloom", "gain": 0.60}
+    ]
+  }
+}
+</studio-meta>*/
+
+const roseCol = String(P.roseColor || "#DF2045");
+const overallCol = String(P.overallColor || "#1B8A4B");
+const pad = Math.min(W, H) * 0.068;
+const innerW = W - pad * 2;
+const isWide = W > H * 1.15;
+
+// 3-Act Storytelling Timing with Smooth Pose Morphing!
+const act = p < 0.34 ? 0 : (p < 0.68 ? 1 : 2);
+const b01 = ui.seg(p, 0.30, 0.38);
+const b12 = ui.seg(p, 0.64, 0.72);
+const poseFrom = p < 0.50 ? "wave" : "pour";
+const poseTo = p < 0.50 ? "pour" : "joy";
+const poseBlend = p < 0.50 ? b01 : b12;
+
+const sc = g3d.scene({
+  fov: 0.62,
+  ambient: 0.28,
+  keyDir: [0.62, 0.72, 0.42],
+  keyColor: "#FFEBD0",
+  fillColor: "#8CC4FF",
+  shadowColor: "#2C425E",
+  shadows: true,
+  shadowExtent: 4.2
+});
+sc.sky("golden_hour");
+sc.post({
+  bloom: 0.34,
+  bloomThreshold: 0.74,
+  godRays: 0.24,
+  dofFocus: isWide ? 5.6 : 6.6,
+  dofAperture: 0.26,
+  lut: "pixar_warm",
+  vibrancy: 1.18,
+  vignette: 0.22
+});
+
+// Warm Sunlight Point Fill + Magic Bloom Light near the Flower!
+const bloomP = ease.apple(ui.seg(p, 0.60, 0.90));
+sc.pointLight([0.72, 1.35, 0.25], "#FFE08A", 0.45 + bloomP * 1.35, 3.8);
+sc.pointLight([-1.2, 1.8, 1.4], "#FFCFA0", 0.75, 5.2);
+
+const distK = isWide ? 1.0 : 1.24;
+sc.cameraRig(p, [
+  { p: 0.00, az: -0.38, elev: 0.20, dist: 6.2 * distK, target: [-0.05, 0.68, 0.0] },
+  { p: 0.30, az:  0.12, elev: 0.22, dist: 5.8 * distK, target: [ 0.02, 0.66, 0.0] },
+  { p: 0.38, az:  0.34, elev: 0.27, dist: 5.0 * distK, target: [ 0.16, 0.62, 0.06] },
+  { p: 0.64, az:  0.66, elev: 0.30, dist: 4.9 * distK, target: [ 0.18, 0.64, 0.06] },
+  { p: 0.72, az: -0.22, elev: 0.21, dist: 5.6 * distK, target: [ 0.06, 0.76, 0.0] },
+  { p: 1.00, az:  0.76, elev: 0.26, dist: 5.4 * distK, target: [ 0.06, 0.80, 0.0] }
+]);
+
+// Sculpted Garden Hill + Distant Trees + Soft 3D Clouds
+const island = sc.node({ pos: [0, 0, 0] });
+island.lathe([
+  [0.0, -1.25], [1.25, -0.82], [2.45, -0.24], [2.58, -0.05], [2.52, 0.0], [0.0, 0.0]
+], [0, 0, 0], [0, 0, 0], { color: "#6E4732", color2: "#288E46", material: "clay", roughness: 0.78 }, 36);
+island.scatter("grass", { count: 28, radius: 2.25, minRadius: 1.05, scale: 0.95 });
+island.scatter("wildflowers", { count: 14, radius: 2.20, minRadius: 1.15, scale: 0.9 });
+island.scatter("pebbles", { count: 10, radius: 2.15, minRadius: 1.10 });
+island.tree([-1.85, -0.02, -1.25], { scale: 0.95, leafColor: "#1E8449", leafColor2: "#62DA86" });
+island.tree([ 1.95, -0.02, -1.45], { scale: 0.80, leafColor: "#248E4E", leafColor2: "#72E294" });
+sc.cloud([-2.4 + Math.sin(t * 0.2) * 0.3, 3.6, -5.2], { scale: 1.25, color: "#FFE8CF" });
+sc.cloud([ 2.6 + Math.cos(t * 0.18) * 0.25, 3.2, -6.0], { scale: 1.05, color: "#FFEBD6" });
+
+// 2-Bone Expressive Botanist with Automatic headLookAt, Smooth Pose Blend & Lip-Sync!
+const potPos = [0.70, 0.55, -0.04];
+const lookTarget = act === 1 ? potPos : (act === 2 ? [0.70, 1.18, -0.04] : [0.2, 1.1, 3.5]);
+const charYaw = lerpNum(0.32, 0.92, b01) - b12 * 0.46;
+const hero = g3d.character(island, {
+  pos: [-0.72, 0, 0.16],
+  rot: [0, charYaw, 0],
+  scale: 0.96,
+  poseFrom: poseFrom,
+  poseTo: poseTo,
+  blend: poseBlend,
+  headLookAt: lookTarget,
+  expression: act === 2 ? "joy" : (act === 1 ? "focus" : "smile"),
+  talk: (t > 0.4 && t < 4.4) || (t > 5.4 && t < 9.6) || (t > 10.6 && t < 14.2),
+  overallColor: overallCol,
+  apron: true,
+  material: "clay"
+});
+
+// Watering Can gripped physically in Right Hand Socket during Act 2 + Parabolic 3D Water Stream!
+if (p > 0.32 && p < 0.70) {
+  const canA = ease.snap(ui.seg(p, 0.32, 0.38)) * (1 - ease.snap(ui.seg(p, 0.65, 0.70)));
+  const canGrip = hero.rightHand.node({ pos: [0.02, -0.05, 0.18], rot: [0.95, 0.0, 0.0], scale: Math.max(0.01, canA) });
+  canGrip.cylinder([0, 0, 0], 0.15, 0.14, 0.27, [0, 0, 0], { color: "#1C8CD8", color2: "#58C8FF", material: "brushed_metal", metalness: 0.35, roughness: 0.24 }, 24);
+  canGrip.torus([0, 0.02, -0.14], 0.095, 0.020, [0, Math.PI * 0.5, 0], { color: "#1C8CD8", roughness: 0.28 }, 18, 8);
+  canGrip.cylinder([0, 0.11, 0.21], 0.024, 0.042, 0.30, [0.95, 0, 0], { color: "#1C8CD8", roughness: 0.28 }, 14);
+  canGrip.sphere([0, 0.21, 0.34], 0.052, { color: "#F5C242", material: "brushed_metal", metalness: 0.78 }, 14);
+  if (p > 0.39 && p < 0.64) {
+    sc.fx3d("water_stream", { from: [0.22, 0.92, 0.16], to: [0.68, 0.52, -0.04], count: 14, arc: 0.12 });
+  }
+}
+
+// Terracotta Pot & Growing Sculpted 3D Rose
+const potNode = island.node({ pos: [0.70, 0, -0.04] });
+potNode.shadow([0, 0.005, 0], 0.56, 0.56, 0.38);
+potNode.lathe([
+  [0.0, 0.0], [0.34, 0.0], [0.44, 0.44], [0.50, 0.46],
+  [0.50, 0.56], [0.42, 0.56], [0.40, 0.49], [0.0, 0.50]
+], [0, 0, 0], [0, 0, 0], { color: "#9C3B1E", color2: "#DF6238", material: "terracotta" }, 34);
+potNode.ellipsoid([0, 0.50, 0], [0.39, 0.048, 0.39], [0, 0, 0], { color: "#362016", material: "clay", roughness: 0.92 }, 20);
+
+const growP = ui.lerp(0.32, 1.0, ease.apple(ui.seg(p, 0.36, 0.76)));
+potNode.flower("rose", [0, 0.48, 0], { grow: growP, bloom: bloomP, color: roseCol, color2: "#FF88A4", stemHeight: 0.78 });
+
+// 3D Atmospheric Fireflies, Floating Dust & Magic Growth Swirl
+sc.fx3d("dust", { count: 18, radius: 2.8, color: "#FFE8B6" });
+sc.fx3d("fireflies", { count: 14, radius: 2.4, center: [0.2, 1.0, 0], color: "#FFD86B" });
+if (act === 2) sc.fx3d("magic_swirl", { center: [0.70, 0.55, -0.04], radius: 0.65, height: 1.25, color: "#FFD166" });
+
+sc.render(ctx);
+
+// 3D-Tracked Callout Pin locking directly onto the Blooming Rose in Act 3!
+if (p > 0.72) {
+  const roseScreen = sc.project([0.70, 1.32, -0.04]);
+  ui.drawCallout(ctx, roseScreen, "Mekar Penuh!", "100% VITALITAS", {
+    dx: -170, dy: -115, color: roseCol, light: true, prog: ui.seg(p, 0.72, 0.84)
+  });
+}
+
+// Kinetic Reels-Style Subtitles synchronized to character lip-sync!
+fx.captions(ctx, [
+  { start: 0.3,  end: 4.8,  text: "Halo! Yuk rawat satu tunas mawar kecil hari ini." },
+  { start: 5.2,  end: 10.0, text: "Siram lembut pagi hari biar akarnya makin kuat." },
+  { start: 10.4, end: 14.8, text: "Rawat dengan sabar, mekarnya bikin hati bahagia!" }
+], t, { y: H * 0.86, size: Math.round((isWide ? 34 : 38) * S), light: true, accent: overallCol });
+
+ui.drawPill(ctx, pad, pad, String(P.brand || "Seflorner").toUpperCase() + " · 3D CINEMA", "rgba(255,255,255,0.72)", "#122018", Math.max(11, Math.round(19 * S)));
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, overallCol, "rgba(20,32,24,0.16)");
+"""
+
+    const val ANIME_CEL_3D = """/*<studio-meta>
+{
+  "schemaVersion": 11,
+  "title": "3D Anime Cel-Shaded Showcase",
+  "defaultDurationSeconds": 10,
+  "seed": 112,
+  "props": [
+    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
+    {"key":"title","label":"Judul Anime","type":"text","default":"MUSIM SEMI"},
+    {"key":"accent","label":"Warna Sakura","type":"color","default":"#FF6E9C"}
+  ],
+  "audio": {
+    "ambience": "botanical_air",
+    "ambienceVolume": 0.16,
+    "cues": [
+      {"p": 0.01, "sfx": "air_whoosh", "gain": 0.52},
+      {"p": 0.12, "sfx": "kalimba_note", "gain": 0.52, "pitch": 1.05},
+      {"p": 0.48, "sfx": "swoosh_soft", "gain": 0.50},
+      {"p": 0.82, "sfx": "crystal_bloom", "gain": 0.56}
+    ]
+  }
+}
+</studio-meta>*/
+
+const accent = String(P.accent || "#FF6E9C");
+const pad = Math.min(W, H) * 0.068;
+const innerW = W - pad * 2;
+const isWide = W > H * 1.15;
+
+const sc = g3d.scene({
+  fov: 0.64,
+  ambient: 0.34,
+  keyDir: [0.52, 0.82, 0.44],
+  keyColor: "#FFFDF5",
+  fillColor: "#B0DEFF",
+  shadowColor: "#3D6A96",
+  shadows: true,
+  shadowExtent: 4.8
+});
+sc.sky("ghibli_sky");
+sc.post({ bloom: 0.24, bloomThreshold: 0.82, godRays: 0.16, lut: "ghibli_daylight", vibrancy: 1.24, vignette: 0.12 });
+
+const distK = isWide ? 1.0 : 1.25;
+sc.cameraRig(p, [
+  { p: 0.00, az: -0.45, elev: 0.14, dist: 6.4 * distK, target: [0, 0.95, 0] },
+  { p: 0.50, az:  0.22, elev: 0.22, dist: 5.4 * distK, target: [0.1, 1.0, 0] },
+  { p: 1.00, az:  0.88, elev: 0.18, dist: 5.9 * distK, target: [0, 0.95, 0] }
+]);
+
+// Rolling Anime Meadow Hill
+sc.terrain({
+  width: 11, depth: 11, segs: 26,
+  heightFn: (x, z) => Math.cos(x * 0.45) * Math.cos(z * 0.45) * 0.42 - 0.38,
+  mat: { color: "#2DA856", color2: "#6CE084", material: "toon", castShadow: false }
+});
+
+// Cel-Shaded Sakura Tree with Ink Outline!
+const treeNode = sc.node({ pos: [0.95, -0.04, -0.65] });
+treeNode.shadow([0, 0.04, 0], 1.15, 1.15, 0.28);
+treeNode.tube([[0, 0, 0], [0.06, 0.9, 0.04], [-0.04, 1.85, 0]], 0.20, 0.10, { color: "#6E4432", material: "toon", outline: 0.024 }, 14);
+const crown = treeNode.node({ pos: [-0.04, 1.95, 0], rot: [0, 0, Math.sin(t * 1.5) * 0.04] });
+const sakMat = { color: "#FF8CB4", color2: "#FFD6E6", material: "toon", outline: 0.026, rim: 0.6 };
+crown.ellipsoid([0, 0.15, 0], [0.95, 0.68, 0.88], [0, 0, 0], sakMat, 22);
+crown.ellipsoid([0.65, -0.08, 0.25], [0.62, 0.48, 0.56], [0, 0, 0], sakMat, 18);
+crown.ellipsoid([-0.68, -0.04, -0.20], [0.66, 0.50, 0.58], [0, 0, 0], sakMat, 18);
+crown.ellipsoid([0.08, 0.58, -0.15], [0.55, 0.44, 0.52], [0, 0, 0], sakMat, 18);
+
+// Fluffy Ghibli Clouds drifting across the 3D Sky
+sc.cloud([-2.6 + p * 0.9, 3.8, -5.2], { scale: 1.4, mat: { color: "#E6F4FF", color2: "#FFFFFF", material: "toon", castShadow: false } });
+sc.cloud([ 2.4 - p * 0.7, 3.3, -6.2], { scale: 1.15, mat: { color: "#E6F4FF", color2: "#FFFFFF", material: "toon", castShadow: false } });
+
+// Anime Cel-Shaded Character with Ink Outlines waving under the Sakura Tree!
+g3d.character(sc, {
+  pos: [-0.62, 0.0, 0.35],
+  rot: [0, 0.35, 0],
+  scale: 1.0,
+  poseFrom: "wave",
+  poseTo: "joy",
+  blend: ui.seg(p, 0.55, 0.72),
+  expression: p > 0.55 ? "joy" : "wink",
+  hairStyle: "bob",
+  hairColor: "#242B3D",
+  shirtColor: "#FFFFFF",
+  overallColor: "#2B78E4",
+  material: "toon",
+  outline: 0.024,
+  glasses: true
+});
+
+sc.scatter("wildflowers", { count: 18, radius: 2.9, minRadius: 1.05, scale: 1.0 });
+sc.fx3d("petals", { count: 28, radius: 3.4, color: accent });
+sc.render(ctx);
+
+// Editorial Display Title + Brand Pill
+const topY = pad + 18 * S;
+ui.drawPill(ctx, pad, topY, "CEL-SHADED 3D · INK OUTLINE", "rgba(255,255,255,0.82)", "#182436", Math.max(11, Math.round(19 * S)));
+ui.drawDisplayText(ctx, String(P.title || "MUSIM SEMI"), pad, topY + 62 * S, innerW, {
+  size: Math.round((isWide ? 74 : 92) * S),
+  color: "#FFFFFF",
+  stroke: "#1B283C",
+  strokeWidth: 7 * S,
+  shadow: "rgba(27,40,60,0.28)"
+});
+fx.captions(ctx, [
+  { start: 0.4, end: 4.8, text: "Gaya 3D Anime cel-shading langsung dari GPU HP." },
+  { start: 5.2, end: 9.7, text: "Lengkap dengan ink outline, langit 3D & kelopak sakura!" }
+], t, { y: H * 0.87, size: Math.round(36 * S), light: true, accent: accent });
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(255,255,255,0.35)");
+"""
+
+    const val PLANT_VS_PEST_3D = """/*<studio-meta>
+{
+  "schemaVersion": 11,
+  "title": "3D Plant vs Pest Story",
+  "defaultDurationSeconds": 15,
+  "seed": 124,
+  "props": [
+    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
+    {"key":"accent","label":"Warna Aksen","type":"color","default":"#23B85A"}
+  ],
+  "audio": {
+    "ambience": "documentary_pulse",
+    "ambienceVolume": 0.16,
+    "cues": [
+      {"p": 0.01, "sfx": "air_whoosh", "gain": 0.52},
+      {"p": 0.14, "sfx": "taptic_thock", "gain": 0.50, "pitch": 1.0},
+      {"p": 0.36, "sfx": "whip", "gain": 0.54},
+      {"p": 0.44, "sfx": "water_drop", "gain": 0.56, "pitch": 1.06},
+      {"p": 0.54, "sfx": "water_drop", "gain": 0.52, "pitch": 1.18},
+      {"p": 0.68, "sfx": "glass_slide", "gain": 0.54},
       {"p": 0.84, "sfx": "crystal_bloom", "gain": 0.58}
     ]
   }
 }
 </studio-meta>*/
 
-const roseCol = String(P.roseColor || "#D92344");
-const overallCol = String(P.overallColor || "#1B8A4B");
+const accent = String(P.accent || "#23B85A");
 const pad = Math.min(W, H) * 0.068;
 const innerW = W - pad * 2;
 const isWide = W > H * 1.15;
 
-// 1. Rich Warm Garden Daylight Backdrop
-ui.drawMeshBg(ctx, W, H, "#EFECE3", [
-  { x: 0.84, y: 0.14, r: 0.82, col: "#FFD180", a: 0.48 },
-  { x: 0.16, y: 0.82, r: 0.78, col: "#9AD9B0", a: 0.42 }
-], t);
-
-// 2. 3-Act Cinema 3D Scene (Hardware Shadow Maps + True-Color Filmic PBR!)
-const act = p < 0.34 ? 0 : (p < 0.68 ? 1 : 2);
-const actP = act === 0 ? ui.seg(p, 0.0, 0.34) : (act === 1 ? ui.seg(p, 0.34, 0.68) : ui.seg(p, 0.68, 1.0));
-
+const act = p < 0.35 ? 0 : (p < 0.68 ? 1 : 2);
 const sc = g3d.scene({
-  fov: 0.64,
-  ambient: 0.28,
-  keyDir: [0.55, 0.84, 0.48],
-  keyColor: "#FFF2DC",
-  fillColor: "#8CC2FF",
+  fov: 0.62,
+  ambient: 0.30,
+  keyDir: [0.55, 0.84, 0.46],
+  keyColor: "#FFF5E4",
+  fillColor: "#9ED0FF",
+  shadowColor: "#263D30",
   shadows: true,
-  shadowExtent: 3.4,
-  vibrancy: 1.20,
-  fogColor: "#EFECE3",
-  fogNear: 13,
-  fogFar: 26
+  shadowExtent: 4.0
 });
+sc.sky("soft_daylight");
+sc.post({ bloom: 0.28, bloomThreshold: 0.78, dofFocus: isWide ? 5.2 : 6.4, dofAperture: 0.24, lut: "botanical_film", vibrancy: 1.22, vignette: 0.18 });
+sc.pointLight([0, 1.6, 1.2], "#FFEAA8", 0.65, 4.5);
 
-// Smooth Multi-Shot Camera Rig (zero abrupt teleport jump!)
-const distK = isWide ? 1.0 : 1.22;
+const distK = isWide ? 1.0 : 1.26;
 sc.cameraRig(p, [
-  { p: 0.00, az: -0.34, elev: 0.22, dist: 6.1 * distK, target: [-0.05, 0.66, 0.0] },
-  { p: 0.30, az:  0.14, elev: 0.24, dist: 5.8 * distK, target: [0.00, 0.66, 0.0] },
-  { p: 0.38, az:  0.34, elev: 0.28, dist: 5.0 * distK, target: [0.16, 0.60, 0.08] },
-  { p: 0.64, az:  0.68, elev: 0.31, dist: 4.9 * distK, target: [0.18, 0.62, 0.08] },
-  { p: 0.72, az: -0.22, elev: 0.22, dist: 5.6 * distK, target: [0.04, 0.74, 0.0] },
-  { p: 1.00, az:  0.85, elev: 0.28, dist: 5.4 * distK, target: [0.04, 0.78, 0.0] }
+  { p: 0.00, az: -0.30, elev: 0.22, dist: 5.6 * distK, target: [ 0.05, 0.55, 0] },
+  { p: 0.32, az:  0.20, elev: 0.24, dist: 5.0 * distK, target: [ 0.25, 0.50, 0] },
+  { p: 0.40, az:  0.42, elev: 0.26, dist: 4.8 * distK, target: [ 0.10, 0.55, 0] },
+  { p: 0.66, az: -0.15, elev: 0.24, dist: 5.2 * distK, target: [ 0.00, 0.58, 0] },
+  { p: 1.00, az:  0.65, elev: 0.26, dist: 5.4 * distK, target: [-0.25, 0.62, 0] }
 ]);
 
-// 3D Lush Moss & Terracotta Earth Diorama Island
-const island = sc.node({ pos: [0, 0, 0] });
-island.lathe([
-  [0.0, -1.15], [1.15, -0.78], [2.15, -0.22], [2.26, -0.05], [2.22, 0.0], [0.0, 0.0]
-], [0, 0, 0], [0, 0, 0], { color: "#6E4732", color2: "#2C8E46", roughness: 0.78, detail: 0.10 }, 36);
+// Garden Table Platform
+const stage = sc.node({ pos: [0, 0, 0] });
+stage.cylinder([0, -0.24, 0], 2.55, 2.65, 0.48, [0, 0, 0], { color: "#7C5234", color2: "#B68256", material: "wood" }, 40);
+stage.scatter("pebbles", { count: 10, radius: 2.2, minRadius: 1.25 });
 
-// Rich Garden Stones & 3D Grass Tufts around Island
-for (let i = 0; i < 5; i++) {
-  const sa = i * 1.25 + 0.55;
-  const sr = 1.66 + (i % 2) * 0.22;
-  island.ellipsoid([Math.cos(sa) * sr, 0.04, Math.sin(sa) * sr], [0.16, 0.09, 0.13], [0, sa, 0], {
-    color: i % 2 === 0 ? "#9E988E" : "#7E857B", roughness: 0.76, detail: 0.08
-  }, 16);
-}
-island.grassTuft([-1.35, 0, -0.65], 1.1, "#278B43");
-island.grassTuft([1.28, 0, 0.78], 1.0, "#2E9A4C");
-island.grassTuft([-0.15, 0, 1.32], 0.9, "#24803D");
-
-// Expressive 3D Botanist Character (Outward Wave in Act 1, Gripping Can in Act 2, Joy Jump in Act 3!)
-const charPose = act === 0 ? "wave" : (act === 1 ? "pour" : "joy");
-const charExpr = act === 0 ? "smile" : (act === 1 ? "focus" : "joy");
-const targetYaw = act === 0 ? 0.34 : (act === 1 ? 0.95 : 0.42);
-const botanist = g3d.stylizedCharacter(island, {
-  pos: [-0.72, 0, 0.18],
-  rot: [0, targetYaw, 0],
-  scale: 0.96,
-  pose: charPose,
-  expression: charExpr,
-  overallColor: overallCol,
-  headYaw: act === 0 ? Math.sin(t * 2.2) * 0.14 : (act === 1 ? 0.16 : 0.18),
-  headPitch: act === 1 ? 0.16 : -0.05,
-  headRoll: Math.sin(t * 2.6) * 0.05
+// Living Chili Plant Mascot on Left
+g3d.creature(stage, "plant_buddy", {
+  pos: [-0.62, 0, 0.08],
+  rot: [0, 0.35, 0],
+  scale: 1.12,
+  flowerType: "chili_plant",
+  hop: act === 2 ? 0.14 : 0.04
 });
 
-// Physically Attach 3D Sky-Blue Watering Can to Botanist's Right Hand during Act 2!
-if (act === 1) {
-  const canGrip = botanist.rightHand.node({ pos: [0.02, -0.04, 0.18], rot: [0.95, 0.0, 0.0] });
-  canGrip.cylinder([0, 0, 0], 0.16, 0.15, 0.28, [0, 0, 0], { color: "#1B8CD8", color2: "#4CC2FF", roughness: 0.28, metalness: 0.12 }, 24);
-  canGrip.torus([0, 0.02, -0.15], 0.10, 0.022, [0, Math.PI * 0.5, 0], { color: "#1B8CD8", roughness: 0.3 }, 20, 10);
-  canGrip.cylinder([0, 0.12, 0.22], 0.026, 0.044, 0.32, [0.95, 0, 0], { color: "#1B8CD8", roughness: 0.28 }, 16);
-  canGrip.sphere([0, 0.22, 0.36], 0.056, { color: "#F2B632", roughness: 0.32, metalness: 0.35 }, 16);
+// Expressive Pest Caterpillar on Right — retreats in Act 2 & vanishes in Act 3!
+const retreatU = ease.apple(ui.seg(p, 0.52, 0.74));
+if (retreatU < 0.96) {
+  const pestX = ui.lerp(0.68, 2.35, retreatU);
+  g3d.creature(stage, "caterpillar", {
+    pos: [pestX, 0, 0.12],
+    rot: [0, act === 0 ? -0.95 : 1.15, 0],
+    scale: (1 - retreatU * 0.4) * 0.95,
+    expression: act >= 1 ? "scared" : "smile",
+    speed: act >= 1 ? 11.0 : 4.5
+  });
+}
 
-  // Sparkling 3D Water Droplets falling into the pot
-  for (let d = 0; d < 4; d++) {
-    const du = (t * 1.9 + d * 0.25) % 1;
-    island.ellipsoid([0.52 + (d - 1.5) * 0.05, ui.lerp(0.84, 0.48, du * du), 0.02], [0.024, 0.044, 0.024], [0, 0, 0], {
-      color: "#2BB5FF", roughness: 0.08, alpha: 0.88, castShadow: false
-    }, 12);
+// Botanical Organic Spray Bottle enters in Act 2 and sprays parabolic mist!
+if (p > 0.34 && p < 0.70) {
+  const spIn = ease.outBack(ui.seg(p, 0.34, 0.42)) * (1 - ease.snap(ui.seg(p, 0.64, 0.70)));
+  const lblTex = g3d.texture((c2, tw, th) => {
+    c2.fillStyle = "#F6F8F4"; c2.fillRect(0, 0, tw, th);
+    c2.fillStyle = "#1E8E4E"; c2.fillRect(0, 0, tw, th * 0.28);
+    c2.fillStyle = "#FFFFFF"; c2.font = "800 54px sans-serif"; c2.textAlign = "center";
+    c2.fillText("BIO SPRAY", tw * 0.5, th * 0.19);
+    c2.fillStyle = "#14241A"; c2.font = "700 42px sans-serif";
+    c2.fillText("100% ALAMI", tw * 0.5, th * 0.58);
+  }, 256);
+  stage.bottle3D([0.0, 0.55 + Math.sin(t * 5) * 0.04, 0.85], [0.1, 0.85, -0.35], {
+    scale: 0.48 * Math.max(0.01, spIn), color: "#1B8E4E", color2: "#4CE088", label: lblTex
+  });
+  if (p > 0.42 && p < 0.62) {
+    sc.fx3d("water_stream", { from: [0.18, 1.18, 0.62], to: [0.82, 0.32, 0.12], count: 16, arc: 0.10, color: "#80E8FF" });
   }
 }
 
-// Rich Terracotta Pot & Sculpted 3D Rose on Right Side
-const potNode = island.node({ pos: [0.68, 0, -0.05] });
-potNode.shadow([0, 0.005, 0], 0.56, 0.56, 0.36);
-potNode.lathe([
-  [0.0, 0.0], [0.34, 0.0], [0.44, 0.44], [0.50, 0.46],
-  [0.50, 0.56], [0.42, 0.56], [0.40, 0.49], [0.0, 0.50]
-], [0, 0, 0], [0, 0, 0], { color: "#9C3B1E", color2: "#D85E36", roughness: 0.64, detail: 0.09 }, 32);
-potNode.ellipsoid([0, 0.50, 0], [0.39, 0.048, 0.39], [0, 0, 0], { color: "#362016", roughness: 0.92, detail: 0.10 }, 20);
-
-const growP = ui.lerp(0.30, 1.0, ease.apple(ui.seg(p, 0.36, 0.76)));
-const bloomP = ease.apple(ui.seg(p, 0.62, 0.90));
-const stemTopY = 0.50 + growP * 0.74;
-potNode.tube([[0, 0.48, 0], [0.03, (0.48 + stemTopY) * 0.5, 0.02], [0, stemTopY, 0]], 0.036, 0.026, {
-  color: "#166E38", color2: "#28B85C", roughness: 0.42, sss: 0.28
-}, 14);
-
-for (let i = 0; i < 2; i++) {
-  const ly = 0.52 + growP * (0.28 + i * 0.18);
-  potNode.leaf([0, ly, 0], [0.35, i * 2.8 + 0.5, 0], 0.46 * growP, 0.21 * growP, 0.08, {
-    color: "#1A7D40", color2: "#44CE74", roughness: 0.34, sss: 0.35
-  });
-}
-
-// 26-Petal Rich Velvet 3D Rose Bloom
-const golden = 2.399963229728653;
-for (let i = 0; i < 26; i++) {
-  const lay = i / 25;
-  const pb = ease.snap(ui.seg(bloomP, (1 - lay) * 0.28, 0.72 + (1 - lay) * 0.28));
-  const ang = i * golden;
-  const rad = ui.lerp(0.02, 0.21, Math.pow(lay, 0.9)) * growP;
-  const pW = ui.lerp(0.14, 0.38, lay) * growP;
-  const pH = ui.lerp(0.22, 0.48, lay) * growP;
-  const pitch = ui.lerp(0.12, 0.24 + 0.70 * lay, pb);
-  potNode.petal([Math.sin(ang) * rad, stemTopY + (1 - lay) * 0.12 * growP, Math.cos(ang) * rad], [pitch, ang, 0], pW, pH, 0.06, 0.08 * pb, {
-    color: lay < 0.42 ? "#6B0D22" : roseCol,
-    color2: lay < 0.42 ? roseCol : "#FF7896",
-    roughness: 0.38, sss: 0.48
-  });
-}
-
+if (act === 2) sc.fx3d("magic_swirl", { center: [-0.62, 0.45, 0.08], radius: 0.72, height: 1.45, color: "#5CE1A8" });
 sc.render(ctx);
 
-// 3. Foreground Celebration Confetti in Act 3 + Liquid Glass Story Card
-if (act === 2) {
-  fx.particles.confetti(ctx, 24, [roseCol, "#F2B632", overallCol, "#2BB5FF"], ui.seg(actP, 0.18, 0.55));
+// 3D-Tracked Fact Callouts anchored directly onto the 3D creatures!
+if (p > 0.08 && p < 0.35) {
+  const pestPt = sc.project([0.68, 0.48, 0.12]);
+  ui.drawCallout(ctx, pestPt, "Hama Pengganggu", "PENYERANG DAUN MUDA", { dx: -165, dy: -130, color: "#E53935", light: true, prog: ui.seg(p, 0.08, 0.18) });
+}
+if (p > 0.72) {
+  const plantPt = sc.project([-0.62, 1.18, 0.08]);
+  ui.drawCallout(ctx, plantPt, "Cabai Sehat!", "BEBAS HAMA · SIAP PANEN", { dx: 135, dy: -115, color: accent, light: true, prog: ui.seg(p, 0.72, 0.84) });
 }
 
-const storyTexts = [
-  String(P.act1Text || "Halo! Yuk rawat satu tunas kecil hari ini."),
-  String(P.act2Text || "Beri air secukupnya & cahaya pagi yang hangat."),
-  String(P.act3Text || "Rawat dengan sabar, mekarnya bikin bahagia!")
-];
-const tags = ["BAB 01 · SAPA", "BAB 02 · SIRAM", "BAB 03 · MEKAR"];
-const cardH = (isWide ? 168 : 224) * S;
-const cardY = pad + 18 * S;
-const cIn = ease.snap(ui.seg(actP, 0.0, 0.16));
+fx.captions(ctx, [
+  { start: 0.3,  end: 4.9,  text: "Awas! Hama ulat dan kutu daun suka menyerang pucuk cabai." },
+  { start: 5.3,  end: 10.1, text: "Semprot larutan nabati organik secara rutin tiap sore." },
+  { start: 10.5, end: 14.8, text: "Hama kabur, tanaman cabai kembali subur berbuah lebat!" }
+], t, { y: H * 0.87, size: Math.round((isWide ? 34 : 38) * S), light: true, accent: accent });
 
-ctx.save();
-ctx.globalAlpha = cIn;
-ctx.translate(0, (1 - cIn) * -28 * S);
-ui.drawLiquidGlass(ctx, pad, cardY, innerW, cardH, 28 * S, { light: true, sweep: (actP * 1.3) % 1 });
-ui.drawPill(ctx, pad + 28 * S, cardY + 24 * S, tags[act], ui.rgba(overallCol, 0.14), overallCol, Math.max(11, Math.round(19 * S)));
-fx.text.wordStagger(ctx, storyTexts[act], pad + 28 * S, cardY + 74 * S, innerW - 56 * S, Math.round((isWide ? 36 : 42) * S), "#142018", Math.round(act * (D / 3) * fps) + 2, "left");
-ctx.restore();
-
-ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, overallCol, "rgba(20,32,24,0.14)");
+ui.drawPill(ctx, pad, pad, String(P.brand || "Seflorner").toUpperCase() + " · PLANT HACKS 3D", "rgba(255,255,255,0.78)", "#122018", Math.max(11, Math.round(19 * S)));
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(20,32,24,0.16)");
 """
 
-    const val CHROME_3D_GPU = """/*<studio-meta>
+    const val APPLE_HARDWARE_3D = """/*<studio-meta>
 {
-  "schemaVersion": 10,
-  "title": "3D GPU Chrome Monolith",
+  "schemaVersion": 11,
+  "title": "3D Apple Hardware + Live Screen",
   "defaultDurationSeconds": 10,
-  "seed": 88,
+  "seed": 135,
   "props": [
-    {"key":"brand","label":"Brand","type":"text","default":"Render Video Code"},
-    {"key":"headline","label":"Judul","type":"text","default":"Real-time GPU"},
-    {"key":"accentWord","label":"Kata Aksen","type":"text","default":"3D Engine."},
+    {"key":"brand","label":"Brand","type":"text","default":"STUDIO PRO"},
     {"key":"accent","label":"Warna Aksen","type":"color","default":"#4AA3FF"}
   ],
   "audio": {
@@ -209,9 +412,8 @@ ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, overallCol, "rgb
     "ambienceVolume": 0.16,
     "cues": [
       {"p": 0.01, "sfx": "air_whoosh", "gain": 0.54},
-      {"p": 0.12, "sfx": "taptic_thock", "gain": 0.52, "pitch": 1.0},
-      {"p": 0.34, "sfx": "glass_tap", "gain": 0.46, "pitch": 1.08},
-      {"p": 0.52, "sfx": "swoosh_soft", "gain": 0.52},
+      {"p": 0.16, "sfx": "taptic_thock", "gain": 0.50, "pitch": 1.0},
+      {"p": 0.45, "sfx": "glass_tap", "gain": 0.48, "pitch": 1.10},
       {"p": 0.82, "sfx": "crystal_bloom", "gain": 0.58}
     ]
   }
@@ -223,485 +425,171 @@ const pad = Math.min(W, H) * 0.068;
 const innerW = W - pad * 2;
 const isWide = W > H * 1.15;
 
-// 1. Studio Depth Backdrop (2D Layer behind GPU 3D)
-ui.drawMeshBg(ctx, W, H, "#06090F", [
-  { x: 0.78, y: 0.18, r: 0.80, col: accent, a: 0.28 },
-  { x: 0.18, y: 0.78, r: 0.74, col: "#C8DCF2", a: 0.16 }
-], t);
-ui.drawGrid(ctx, W, H, 130 * S, "rgba(255,255,255,0.032)");
-
-// 2. Real GPU WebGL 3D Scene (Hardware Z-Buffer + Smooth PBR HDRI Reflections)
-const introSp = spring({ frame, fps, config: { damping: 16, stiffness: 110 } });
-const az = -0.65 + ease.smooth(p) * Math.PI * 2.1;
-const elev = 0.22 + Math.sin(p * Math.PI * 1.5) * 0.28;
-const dist = (isWide ? 5.8 : 7.6) - Math.sin(p * Math.PI) * 1.25;
-const floatY = Math.sin(t * 1.5) * 0.12;
-
-const sc = g3d.scene({
-  fov: 0.68,
-  ambient: 0.38,
-  keyColor: "#FFFDF8",
-  fillColor: "#A6D0FF",
-  fogColor: "#06090F",
-  fogNear: 9.5,
-  fogFar: 22.0
-});
-sc.orbit(az, elev, dist, [0, 0.25, 0]);
-
-// Floating Titanium Core Slab (beveled feel via layered plates)
-const slabSpin = t * 0.42;
-const slabScale = ui.clamp(introSp, 0.05, 1.05);
-sc.box([0, 0.25 + floatY, 0], [1.35 * slabScale, 2.05 * slabScale, 0.26 * slabScale], [0.12 * Math.sin(t), slabSpin, 0.08 * Math.cos(t)], {
-  color: "#1B2330", color2: "#3A4960", roughness: 0.16, metalness: 0.92, rim: 0.85, rimColor: "#E8F3FF"
-});
-// Glowing Accent Core Bar embedded cleanly
-sc.box([0, 0.25 + floatY, 0], [0.22 * slabScale, 1.32 * slabScale, 0.30 * slabScale], [0.12 * Math.sin(t), slabSpin, 0.08 * Math.cos(t)], {
-  color: accent, color2: "#FFFFFF", roughness: 0.12, metalness: 0.45, emissive: accent, rim: 0.9
-});
-
-// 2 Counter-Rotating Chrome Gyro Rings
-sc.torus([0, 0.25 + floatY, 0], 1.72 * slabScale, 0.055, [0.65 + t * 0.45, t * 0.35, 0.2], {
-  color: "#E8EFF8", color2: "#9FB4CE", roughness: 0.09, metalness: 0.98, rim: 0.95
-}, 48, 20);
-sc.torus([0, 0.25 + floatY, 0], 2.15 * slabScale, 0.036, [-0.52 - t * 0.32, -t * 0.48, 0.45], {
-  color: accent, color2: "#FFFFFF", roughness: 0.14, metalness: 0.88, rim: 0.85
-}, 48, 18);
-
-// 4 Orbiting Chrome & Glass Satellite Spheres
-for (let i = 0; i < 4; i++) {
-  const oa = i * Math.PI * 0.5 + t * 0.65;
-  const rOrb = (i % 2 === 0 ? 1.72 : 2.15) * slabScale;
-  const sx = Math.cos(oa) * rOrb;
-  const sy = 0.25 + floatY + Math.sin(oa * 2 + i) * 0.55;
-  const sz = Math.sin(oa) * rOrb;
-  sc.sphere([sx, sy, sz], (i % 2 === 0 ? 0.18 : 0.13) * slabScale, {
-    color: i % 2 === 0 ? "#F5F8FC" : accent,
-    roughness: 0.08, metalness: i % 2 === 0 ? 0.98 : 0.5, rim: 0.95
-  }, 24);
-}
-
-// Translucent Liquid Glass Shield Ring (alpha-sorted!)
-sc.torus([0, 0.25 + floatY, 0], 1.25 * slabScale, 0.18, [Math.PI * 0.5 + Math.sin(t * 0.8) * 0.25, t * 0.3, 0], {
-  color: "#D8ECFF", color2: "#FFFFFF", roughness: 0.10, metalness: 0.20, rim: 1.1, rimColor: "#FFFFFF", alpha: 0.36
-}, 40, 20);
-
-sc.render(ctx);
-
-// 3. Foreground Depth Bokeh + Cinematic Vignette + Liquid Glass Editorial Overlay
-fx.particles.bokeh(ctx, 12, accent, 0.14);
-ui.drawVignette(ctx, W, H, 0.38, false);
-
-// Top Telemetry Header
-ctx.fillStyle = "rgba(218,234,250,0.88)";
-ctx.font = "700 " + Math.max(11, Math.round(20 * S)) + "px monospace, sans-serif";
-ctx.textAlign = "left"; ctx.textBaseline = "top";
-ctx.fillText("WEBGL PBR // HARDWARE Z-BUFFER", pad, pad);
-ctx.textAlign = "right"; ctx.fillStyle = "rgba(170,192,216,0.68)";
-ctx.fillText("AZ " + Math.round(((az * 180) / Math.PI + 360) % 360) + "° · 60Hz", W - pad, pad);
-
-// Floating Liquid Glass Editorial Footer
-const footH = (isWide ? 172 : 228) * S;
-const footY = H - pad - footH - 22 * S;
-const fSp = fx.stagger(frame, 1, 5);
-ctx.save();
-ctx.globalAlpha = ui.clamp(fSp * 1.25, 0, 1);
-ctx.translate(0, (1 - fSp) * 44 * S);
-ui.drawLiquidGlass(ctx, pad, footY, innerW, footH, 28 * S, { light: false, sweep: (p * 1.45) % 1 });
-
-const hSize = Math.round((isWide ? 48 : 56) * S);
-ui.drawRichText(ctx, [
-  { text: String(P.headline || "Real-time GPU") },
-  { text: String(P.accentWord || "3D Engine."), italic: true, color: accent }
-], pad + 32 * S, footY + 30 * S, innerW - 64 * S, hSize, hSize * 1.15, "#FFFFFF", ui.seg(p, 0.06, 0.42), "left");
-
-ctx.fillStyle = "rgba(210,224,240,0.72)";
-ctx.font = "600 " + Math.max(12, Math.round(22 * S)) + "px monospace, sans-serif";
-ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-ctx.fillText(String(P.brand || "Render Video Code").toUpperCase() + " · V0.8", pad + 32 * S, footY + footH - 28 * S);
-ctx.restore();
-
-ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(255,255,255,0.14)");
-"""
-
-    const val BOTANICAL_3D = """/*<studio-meta>
-{
-  "schemaVersion": 10,
-  "title": "3D GPU Velvet Rose Cinema",
-  "defaultDurationSeconds": 10,
-  "seed": 77,
-  "props": [
-    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
-    {"key":"subtitle","label":"Catatan Botani","type":"text","default":"36 KELOPAK PBR GPU · SUDUT EMAS 137.5°"},
-    {"key":"roseColor","label":"Warna Mawar","type":"color","default":"#D62849"},
-    {"key":"potColor","label":"Warna Pot","type":"color","default":"#C86440"},
-    {"key":"leafColor","label":"Warna Daun","type":"color","default":"#257E4E"}
-  ],
-  "audio": {
-    "ambience": "botanical_air",
-    "ambienceVolume": 0.16,
-    "cues": [
-      {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.50},
-      {"p": 0.24, "sfx": "bloom", "gain": 0.52},
-      {"p": 0.62, "sfx": "glass_shimmer", "gain": 0.42, "pitch": 1.04},
-      {"p": 0.84, "sfx": "chime", "gain": 0.50}
-    ]
-  }
-}
-</studio-meta>*/
-
-const roseCol = String(P.roseColor || "#D62849");
-const potCol = String(P.potColor || "#C86440");
-const leafCol = String(P.leafColor || "#257E4E");
-const pad = Math.min(W, H) * 0.068;
-const innerW = W - pad * 2;
-const isWide = W > H * 1.15;
-
-// 1. Deep Forest Studio Backdrop + Soft Volumetric Ray
-ui.drawMeshBg(ctx, W, H, "#040A07", [
-  { x: 0.50, y: 0.38, r: 0.74, col: roseCol, a: 0.24 },
-  { x: 0.16, y: 0.82, r: 0.66, col: leafCol, a: 0.20 }
-], t);
-
-ctx.save();
-const ray = ctx.createLinearGradient(W * 0.88, 0, W * 0.25, H * 0.80);
-ray.addColorStop(0, "rgba(255,244,215,0.08)");
-ray.addColorStop(1, "rgba(0,0,0,0)");
-ctx.fillStyle = ray;
-ctx.beginPath();
-ctx.moveTo(W * 0.55, 0); ctx.lineTo(W, 0); ctx.lineTo(W * 0.64, H * 0.85); ctx.lineTo(W * 0.14, H * 0.85);
-ctx.closePath(); ctx.fill();
-ctx.restore();
-
-// 2. Real GPU WebGL 3D Sculpted Rose + Smooth 36-Side Terracotta Pot!
-const az = -0.50 + ease.smooth(p) * Math.PI * 2.1;
-const elev = 0.18 + Math.sin(p * Math.PI) * 0.38;
-const dist = (isWide ? 4.8 : 6.4) - Math.sin(p * Math.PI) * 1.15;
-const floatY = Math.sin(t * 1.35) * 0.06;
+// Live Animated 2D UI Texture rendered dynamically onto the 3D iPhone Screen!
+const liveScreen = g3d.texture((c2, tw, th) => {
+  const g = c2.createLinearGradient(0, 0, tw, th);
+  g.addColorStop(0, "#09101E"); g.addColorStop(1, "#122645");
+  c2.fillStyle = g; c2.fillRect(0, 0, tw, th);
+  // Dynamic Glowing Wave Ring inside screen
+  const rg = c2.createRadialGradient(tw * 0.5, th * 0.42, 10, tw * 0.5, th * 0.42, tw * 0.42);
+  rg.addColorStop(0, accent); rg.addColorStop(1, "rgba(0,0,0,0)");
+  c2.globalAlpha = 0.42; c2.fillStyle = rg; c2.fillRect(0, 0, tw, th); c2.globalAlpha = 1;
+  c2.strokeStyle = "#FFFFFF"; c2.lineWidth = 14; c2.lineCap = "round";
+  c2.beginPath(); c2.arc(tw * 0.5, th * 0.42, tw * 0.24, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * ease.apple(p)); c2.stroke();
+  c2.fillStyle = "#FFFFFF"; c2.font = "800 72px sans-serif"; c2.textAlign = "center"; c2.textBaseline = "middle";
+  c2.fillText(Math.round(ease.apple(p) * 100) + "%", tw * 0.5, th * 0.42);
+  c2.fillStyle = "rgba(220,235,255,0.85)"; c2.font = "700 32px monospace";
+  c2.fillText("GPU RENDER 4K", tw * 0.5, th * 0.72);
+  c2.fillStyle = "rgba(255,255,255,0.16)";
+  c2.fillRect(tw * 0.14, th * 0.80, tw * 0.72, 16);
+  c2.fillStyle = accent;
+  c2.fillRect(tw * 0.14, th * 0.80, tw * 0.72 * p, 16);
+}, 512);
 
 const sc = g3d.scene({
-  fov: 0.68,
-  ambient: 0.36,
-  keyColor: "#FFF8EE",
-  fillColor: "#BFE8D0",
-  fogColor: "#040A07",
-  fogNear: 10,
-  fogFar: 22
+  fov: 0.60,
+  ambient: 0.30,
+  keyDir: [0.65, 0.75, 0.55],
+  keyColor: "#FFFFFF",
+  fillColor: "#8CC4FF",
+  shadows: true,
+  shadowExtent: 4.5
 });
-sc.orbit(az, elev, dist, [0, 0.32 + floatY * 0.3, 0]);
+sc.sky("studio_cyc");
+sc.post({ bloom: 0.36, bloomThreshold: 0.72, lut: "apple_studio", vibrancy: 1.16, chromatic: 0.25, vignette: 0.28 });
+sc.pointLight([1.8, 1.4, 2.0], accent, 1.4, 6.0);
+sc.pointLight([-2.0, 0.8, 1.5], "#FFFFFF", 0.9, 5.5);
 
-// Smooth 36-side Sculpted Terracotta Pot + Soil Mound (ZERO Z-fighting!)
-const potProfile = [
-  [0.0, -1.65], [0.58, -1.65], [0.76, -0.82], [0.88, -0.78],
-  [0.89, -0.60], [0.74, -0.60], [0.71, -0.70], [0.0, -0.66]
-];
-sc.lathe(potProfile, [0, floatY, 0], [0, 0, 0], {
-  color: "#6E331F", color2: potCol, roughness: 0.64, metalness: 0.04, rim: 0.35
-}, 36);
-sc.ellipsoid([0, floatY - 0.72, 0], [0.68, 0.14, 0.68], [0, 0, 0], { color: "#2D1D16", color2: "#4A3125", roughness: 0.92, metalness: 0.0, rim: 0.1 }, 20);
+const distK = isWide ? 1.0 : 1.28;
+sc.cameraRig(p, [
+  { p: 0.00, az: -0.62, elev: 0.16, dist: 5.8 * distK, target: [0, 0.2, 0] },
+  { p: 0.45, az:  0.38, elev: 0.12, dist: 4.8 * distK, target: [0, 0.2, 0] },
+  { p: 0.78, az:  2.75, elev: 0.18, dist: 5.2 * distK, target: [0, 0.2, 0] },
+  { p: 1.00, az:  0.15, elev: 0.10, dist: 5.0 * distK, target: [0, 0.2, 0] }
+]);
 
-// Smooth Curved Botanical Stem (GPU Tube)
-const stemPts = [];
-for (let k = 0; k <= 10; k++) {
-  const u = k / 10;
-  stemPts.push([
-    Math.sin(u * Math.PI * 0.85) * 0.09 + Math.sin(t * 1.6) * 0.03 * u * u,
-    floatY - 0.68 + u * 1.38,
-    Math.cos(u * Math.PI * 0.6) * 0.04 - 0.04
-  ]);
-}
-sc.tube(stemPts, 0.062, 0.044, { color: "#144A2B", color2: leafCol, roughness: 0.42, sss: 0.25, rim: 0.35 }, 16);
-
-const head = stemPts[stemPts.length - 1];
-const bloom = ease.apple(ui.seg(p, 0.04, 0.70));
-
-// 4 Smooth Curved 3D Leaves along the stem
-for (let i = 0; i < 4; i++) {
-  const pt = stemPts[3 + i * 2];
-  const ang = i * 1.62 + 0.4;
-  sc.leaf(pt, [0.35 + Math.sin(t * 2 + i) * 0.04, ang, 0], 0.78, 0.34, 0.14, {
-    color: "#154D2E", color2: "#4CC482", roughness: 0.28, metalness: 0.05, sss: 0.32, rim: 0.45
-  });
-}
-
-// 5 Green Sepals beneath rose head
-for (let i = 0; i < 5; i++) {
-  const a = (i * Math.PI * 2) / 5 + 0.3;
-  sc.petal(head, [ui.lerp(0.6, 1.35, bloom), a, 0], 0.22, 0.52, 0.04, 0.05, {
-    color: "#154A2C", color2: leafCol, roughness: 0.42, sss: 0.24
-  });
-}
-
-// 36 Smooth GPU Velvet Petals (Golden Angle 137.5° + Subsurface Scattering!)
-const golden = 2.399963229728653;
-const totalP = 36;
-for (let i = 0; i < totalP; i++) {
-  const lay = i / (totalP - 1);
-  const pb = ease.snap(ui.seg(bloom, (1 - lay) * 0.30, 0.70 + (1 - lay) * 0.30));
-  const ang = i * golden;
-  const rad = ui.lerp(0.04, 0.34, Math.pow(lay, 0.9));
-  const by = ui.lerp(0.22, 0.0, lay);
-  const pW = ui.lerp(0.24, 0.62, Math.pow(lay, 0.78));
-  const pH = ui.lerp(0.36, 0.78, Math.pow(lay, 0.72));
-  const pitch = ui.lerp(ui.lerp(0.10, 0.30, lay), ui.lerp(0.18, 0.92, Math.pow(lay, 1.12)), pb);
-  const px = head[0] + Math.sin(ang) * rad;
-  const pz = head[2] + Math.cos(ang) * rad;
-  sc.petal([px, head[1] + by, pz], [pitch, ang, 0], pW, pH, ui.lerp(0.06, 0.15, lay), ui.lerp(0.02, 0.16, lay) * pb, {
-    color: lay < 0.42 ? "#540E20" : roseCol,
-    color2: lay < 0.42 ? roseCol : "#FF96AE",
-    roughness: 0.38, metalness: 0.04, sss: 0.48, rim: 0.55, rimColor: "#FFD4DF"
-  });
-}
-
-// Golden Orbit Ring & Glowing Pollen Spheres
-sc.torus([0, floatY + 0.25, 0], 1.85, 0.015, [0.36, t * 0.3, -0.18], {
-  color: "#F5D284", roughness: 0.15, metalness: 0.92, rim: 0.7, alpha: 0.65
-}, 48, 12);
-
-for (let i = 0; i < 12; i++) {
-  const oa = rand(300 + i) * Math.PI * 2 + t * 0.35;
-  const rr = 1.2 + rand(320 + i) * 1.4;
-  sc.sphere([Math.cos(oa) * rr, floatY + (rand(340 + i) - 0.3) * 2.0, Math.sin(oa) * rr], 0.032, {
-    color: "#FFE7A8", emissive: "#FFD166", roughness: 0.2, rim: 0.8
-  }, 10);
-}
-
+// Floating Brushed Titanium iPhone 3D + Live Animated Screen + Holographic Orbit Ring
+const floatY = Math.sin(t * 1.8) * 0.10;
+const introS = spring({ frame, fps, config: { damping: 15, stiffness: 115 } });
+sc.phone3D([0, 0.22 + floatY, 0], [0.06 * Math.sin(t), 0, 0.04 * Math.cos(t)], {
+  scale: 0.95 * ui.clamp(introS, 0.1, 1.04),
+  frameColor: "#9BA5B5",
+  screen: liveScreen
+});
+sc.torus([0, 0.22 + floatY, 0], 1.78, 0.025, [0.58 + t * 0.3, t * 0.4, 0.2], {
+  color: "#E8F0FA", material: "hologram", roughness: 0.10, rim: 0.9
+}, 48, 14);
+sc.text3D(String(P.brand || "STUDIO"), [0, -1.32, 0.2], [-0.15, 0, 0], {
+  size: 0.36, color: "#E8F0FA", color2: accent, material: "brushed_metal"
+});
+sc.fx3d("dust", { count: 16, radius: 3.0, color: accent });
 sc.render(ctx);
 
-// 3. Foreground Petals + Vignette + Editorial Overlay
-fx.particles.petals(ctx, 10, roseCol, 0.22);
-ui.drawVignette(ctx, W, H, 0.40, false);
+// 3D-Tracked Apple Keynote Hardware Callouts!
+if (p > 0.14 && p < 0.60) {
+  const topEdge = sc.project([0.55, 1.15 + floatY, 0.05]);
+  ui.drawCallout(ctx, topEdge, "Brushed Titanium", "PBR METAL + HDRI", { dx: 120, dy: -100, color: accent, light: false, prog: ui.seg(p, 0.14, 0.26) });
+}
+if (p > 0.42 && p < 0.88) {
+  const screenCtr = sc.project([-0.45, 0.15 + floatY, 0.08]);
+  ui.drawCallout(ctx, screenCtr, "Live 2D→3D Screen", "60FPS CANVAS TEXTURE", { dx: -155, dy: 95, color: "#5CE1A8", light: false, prog: ui.seg(p, 0.42, 0.56) });
+}
 
-ctx.fillStyle = "rgba(180,232,198,0.86)";
-ctx.font = "700 " + Math.max(11, Math.round(20 * S)) + "px monospace, sans-serif";
-ctx.textAlign = "left"; ctx.textBaseline = "top";
-ctx.fillText("WEBGL PBR // ROSA VELVET 3D", pad, pad);
-ctx.textAlign = "right"; ctx.fillStyle = "rgba(210,226,218,0.65)";
-ctx.fillText("ORBIT " + Math.round(((az * 180) / Math.PI + 360) % 360) + "°", W - pad, pad);
-
-const footH = 166 * S;
-const footY = H - pad - footH - 22 * S;
-ui.drawLiquidGlass(ctx, pad, footY, innerW, footH, 28 * S, { light: false, sweep: p * 1.4 });
-fx.text.wordStagger(ctx, String(P.brand || "Seflorner") + " · Botanical 3D", pad + 32 * S, footY + 34 * S, innerW - 64 * S, Math.round(44 * S), "#FFFFFF", 4, "left");
-fx.text.typewriter(ctx, String(P.subtitle || "36 KELOPAK PBR GPU · SUDUT EMAS 137.5°"), pad + 32 * S, footY + 102 * S, Math.round(21 * S), "#9DE0B8", ui.seg(p, 0.12, 0.74), true);
-ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, roseCol, "rgba(255,255,255,0.14)");
+ui.drawPill(ctx, pad, pad, "APPLE KEYNOTE 3D ENGINE · V1.1", "rgba(255,255,255,0.12)", "#F5F8FC", Math.max(11, Math.round(19 * S)));
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(255,255,255,0.16)");
 """
 
-    const val DATA_STORY = """/*<studio-meta>
+    const val LIQUID_GLASS_SHADER = """/*<studio-meta>
 {
-  "schemaVersion": 10,
-  "title": "Swiss Data Editorial",
+  "schemaVersion": 11,
+  "title": "3D Liquid Glass Raymarch Shader",
   "defaultDurationSeconds": 10,
-  "seed": 44,
+  "seed": 144,
   "props": [
-    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
-    {"key":"metric","label":"Label Grafik","type":"text","default":"PERTUMBUHAN TANAMAN"},
-    {"key":"accent","label":"Warna Aksen","type":"color","default":"#23A455"}
+    {"key":"title","label":"Judul","type":"text","default":"LIQUID GLASS"},
+    {"key":"subtitle","label":"Subjudul","type":"text","default":"REAL-TIME GPU RAYMARCHING"},
+    {"key":"accent","label":"Warna Bias","type":"color","default":"#4AA3FF"}
   ],
   "audio": {
-    "ambience": "documentary_pulse",
-    "ambienceVolume": 0.15,
+    "ambience": "ios_glass_chimes",
+    "ambienceVolume": 0.18,
     "cues": [
-      {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.46},
-      {"p": 0.08, "sfx": "taptic_thock", "gain": 0.50, "pitch": 1.0},
-      {"p": 0.18, "sfx": "taptic_thock", "gain": 0.48, "pitch": 1.12},
-      {"p": 0.45, "sfx": "air_whoosh", "gain": 0.58},
-      {"p": 0.50, "sfx": "wood_tap", "gain": 0.46, "pitch": 1.04},
-      {"p": 0.56, "sfx": "taptic_thock", "gain": 0.46, "pitch": 1.14},
-      {"p": 0.82, "sfx": "crystal_bloom", "gain": 0.56}
+      {"p": 0.01, "sfx": "liquid_morph", "gain": 0.54},
+      {"p": 0.30, "sfx": "glass_tap", "gain": 0.46, "pitch": 1.05},
+      {"p": 0.60, "sfx": "glass_shimmer", "gain": 0.48},
+      {"p": 0.85, "sfx": "crystal_bloom", "gain": 0.56}
     ]
   }
 }
 </studio-meta>*/
 
-const accent = String(P.accent || "#23A455");
+const accent = String(P.accent || "#4AA3FF");
 const pad = Math.min(W, H) * 0.068;
 const innerW = W - pad * 2;
-const isWide = W > H * 1.15;
 
-function drawSceneA(sp) {
-  const cState = fx.cameraRig(sp, [
-    { p: 0.0, x: 0, y: -22 * S, zoom: 1.09, rot: -0.008 },
-    { p: 0.4, x: 0, y: 0, zoom: 1.0, rot: 0.0 },
-    { p: 1.0, x: 12 * S, y: 18 * S, zoom: 1.045, rot: 0.006 }
-  ], 4 * S);
-  ui.drawMeshBg(ctx, W, H, "#070C10", [
-    { x: 0.84, y: 0.16, r: 0.78, col: accent, a: 0.28 },
-    { x: 0.14, y: 0.82, r: 0.72, col: "#4AA3FF", a: 0.22 }
-  ], t);
-  ctx.save(); cam.apply(ctx, cState, 0.35); ui.drawGrid(ctx, W, H, 130 * S, "rgba(255,255,255,0.032)"); ctx.restore();
-  ctx.save(); cam.apply(ctx, cState, 1.0);
-  const topY = isWide ? H * 0.12 : H * 0.11;
-  ui.drawPill(ctx, pad, topY, String(P.metric || "PERTUMBUHAN TANAMAN"), "rgba(255,255,255,0.10)", accent, Math.max(12, Math.round(21 * S)));
-  const countVal = interpolate(sp, [0.02, 0.92], [14, 98.4], { easing: ease.apple });
-  fx.text.counterRoll(ctx, countVal, pad, topY + 72 * S, Math.round((isWide ? 120 : 148) * S), "#FFFFFF", "%", "left");
-  ctx.fillStyle = "rgba(210,226,218,0.75)"; ctx.font = "500 " + Math.max(13, Math.round(26 * S)) + "px sans-serif";
-  ctx.textAlign = "left"; ctx.textBaseline = "top";
-  ctx.fillText("Indeks vitalitas akar & tunas baru (30 hari)", pad, topY + (isWide ? 216 : 246) * S);
-  const cardY = isWide ? H * 0.48 : H * 0.40, cardH = (isWide ? 330 : 450) * S;
-  ui.drawLiquidGlass(ctx, pad, cardY, innerW, cardH, 30 * S, { light: false, sweep: sp * 1.3 });
-  fx.chart.spline(ctx, [16, 24, 29, 44, 56, 62, 81, 98], pad + 38 * S, cardY + 62 * S, innerW - 76 * S, cardH - 120 * S, accent, ui.seg(sp, 0.06, 0.88));
-  if (!isWide) {
-    const miniY = cardY + cardH + 34 * S, miniW = (innerW - 24 * S) * 0.5, miniH = 158 * S;
-    const stats = [
-      { k: "KELEMBAPAN", v: Math.round(ui.lerp(42, 74, ease.apple(sp))) + "%", c: "#6CC4FF" },
-      { k: "CAHAYA OPTIMAL", v: Math.round(ui.lerp(3, 6.8, ease.apple(sp)) * 10) / 10 + " jam", c: "#F5C45E" }
-    ];
-    for (let i = 0; i < 2; i++) {
-      const stP = fx.stagger(frame, i + 4, 6), mx = pad + i * (miniW + 24 * S);
-      ctx.save(); ctx.globalAlpha = ui.clamp(stP * 1.3, 0, 1); ctx.translate(0, (1 - stP) * 44 * S);
-      ui.drawLiquidGlass(ctx, mx, miniY, miniW, miniH, 24 * S, { light: false });
-      ctx.fillStyle = "rgba(200,216,210,0.68)"; ctx.font = "700 " + Math.round(18 * S) + "px monospace, sans-serif";
-      ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(stats[i].k, mx + 26 * S, miniY + 28 * S);
-      ctx.fillStyle = stats[i].c; ctx.font = "800 " + Math.round(48 * S) + "px sans-serif"; ctx.fillText(stats[i].v, mx + 26 * S, miniY + 68 * S);
-      ctx.restore();
-    }
-  }
-  ctx.restore(); ui.drawVignette(ctx, W, H, 0.34, false);
-}
+const glsl = [
+  "uniform vec3 uAccent;",
+  "float mapScene(vec3 p) {",
+  "  vec3 q = p;",
+  "  q.xz *= rot2(uTime * 0.45);",
+  "  q.xy *= rot2(uTime * 0.28);",
+  "  float d1 = sdSphere(q - vec3(sin(uTime*1.2)*0.48, cos(uTime*0.9)*0.32, 0.0), 0.58);",
+  "  float d2 = sdSphere(q + vec3(cos(uTime*1.1)*0.52, sin(uTime*1.3)*0.38, sin(uTime)*0.25), 0.48);",
+  "  float d3 = sdTorus(q.xzy, vec2(0.88, 0.16));",
+  "  return smin(smin(d1, d2, 0.45), d3, 0.35);",
+  "}",
+  "vec3 calcNorm(vec3 p) {",
+  "  vec2 e = vec2(0.0025, 0.0);",
+  "  return normalize(vec3(",
+  "    mapScene(p+e.xyy)-mapScene(p-e.xyy),",
+  "    mapScene(p+e.yxy)-mapScene(p-e.yxy),",
+  "    mapScene(p+e.yyx)-mapScene(p-e.yyx)",
+  "  ));",
+  "}",
+  "vec4 renderShader(vec2 uv) {",
+  "  vec3 ro = vec3(0.0, 0.0, 3.1);",
+  "  vec3 rd = normalize(vec3(uv, -1.45));",
+  "  vec3 bg = mix(vec3(0.03, 0.05, 0.09), uAccent * 0.28, smoothstep(-0.6, 0.8, uv.y));",
+  "  bg += uAccent * 0.18 * exp(-length(uv - vec2(0.32, 0.25)) * 2.8);",
+  "  float dist = 0.0; bool hit = false;",
+  "  for (int i = 0; i < 64; i++) {",
+  "    vec3 p = ro + rd * dist;",
+  "    float d = mapScene(p);",
+  "    if (d < 0.002) { hit = true; break; }",
+  "    if (dist > 7.0) break;",
+  "    dist += d;",
+  "  }",
+  "  if (!hit) return vec4(bg, 1.0);",
+  "  vec3 p = ro + rd * dist;",
+  "  vec3 N = calcNorm(p);",
+  "  vec3 V = -rd;",
+  "  vec3 L = normalize(vec3(0.6, 0.8, 0.7));",
+  "  float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);",
+  "  float spec = pow(max(dot(N, normalize(L + V)), 0.0), 48.0);",
+  "  vec3 irid = cosPalette(fres * 0.85 + uTime * 0.15, vec3(0.55), vec3(0.45), vec3(1.0), vec3(0.0, 0.22, 0.45));",
+  "  vec3 col = mix(bg * 1.4, irid, 0.45 + 0.5 * fres) + vec3(1.0) * spec * 1.35 + uAccent * fres * 0.65;",
+  "  col = col / (1.0 + col * 0.35);",
+  "  return vec4(clamp(col, 0.0, 1.0), 1.0);",
+  "}"
+].join("\n");
 
-function drawSceneB(sp) {
-  const cState = fx.cameraRig(sp, [
-    { p: 0.0, x: 0, y: 16 * S, zoom: 1.07, rot: 0.006 },
-    { p: 0.5, x: 0, y: 0, zoom: 1.0, rot: 0.0 },
-    { p: 1.0, x: 0, y: -12 * S, zoom: 1.03, rot: -0.004 }
-  ], 3.5 * S);
-  ui.drawMeshBg(ctx, W, H, "#F4F6F2", [{ x: 0.82, y: 0.16, r: 0.72, col: accent, a: 0.22 }, { x: 0.16, y: 0.86, r: 0.68, col: "#A9CBFF", a: 0.26 }], t);
-  ctx.save(); cam.apply(ctx, cState, 0.35); ui.drawGrid(ctx, W, H, 130 * S, "rgba(14,20,29,0.04)"); ctx.restore();
-  ctx.save(); cam.apply(ctx, cState, 1.0);
-  const fS = Math.round((isWide ? 66 : 76) * S), topY = isWide ? H * 0.11 : H * 0.13;
-  const used = ui.drawRichText(ctx, [{ text: "Hasil nyata dari perawatan" }, { text: "konsisten.", italic: true, color: accent }], pad, topY, innerW, fS, fS * 1.18, "#0E141D", ui.seg(sp, 0.02, 0.44), "left");
-  const cardY = topY + used + 48 * S, cardH = (isWide ? 340 : 460) * S;
-  ui.drawLiquidGlass(ctx, pad, cardY, innerW, cardH, 30 * S, { light: true, sweep: sp * 1.2 });
-  fx.chart.bars(ctx, [
-    { value: 0.42, label: "W1", color: "#8EA4BC" }, { value: 0.66, label: "W2", color: "#58A6E8" },
-    { value: 0.84, label: "W3", color: "#36C276" }, { value: 0.98, label: "W4", color: accent }
-  ], pad + 44 * S, cardY + 62 * S, innerW - 88 * S, cardH - 128 * S, Math.round(fps * 4.9), { light: true, showValues: true });
-  const lockY = cardY + cardH + 64 * S;
-  ui.drawRichText(ctx, [{ text: String(P.brand || "Seflorner") }, { text: ".", color: accent }], W * 0.5, lockY, innerW, Math.round(70 * S), 80 * S, "#0E141D", ui.seg(sp, 0.36, 0.80), "center");
-  ctx.save(); ctx.globalAlpha = ease.apple(ui.seg(sp, 0.52, 0.86)); ctx.fillStyle = "rgba(14,20,29,0.58)";
-  ctx.font = "italic 500 " + Math.round(28 * S) + "px Georgia, serif"; ctx.textAlign = "center"; ctx.textBaseline = "top";
-  ctx.fillText("Tumbuh terukur, mekar maksimal.", W * 0.5, lockY + 86 * S); ctx.restore(); ctx.restore();
-}
+g3d.shader(ctx, glsl, { uAccent: accent });
+ui.drawVignette(ctx, W, H, 0.32, false);
 
-if (p < 0.45) drawSceneA(ui.seg(p, 0.0, 0.55));
-else if (p < 0.55) fx.transition.glassSlide(ctx, ui.seg(p, 0.45, 0.55), () => drawSceneA(ui.seg(p, 0.0, 0.55)), () => drawSceneB(ui.seg(p, 0.45, 1.0)));
-else drawSceneB(ui.seg(p, 0.45, 1.0));
-ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(120,140,160,0.22)");
+// Floating Liquid Glass Editorial Overlay
+const footH = 196 * S, footY = H - pad - footH - 24 * S;
+ui.drawLiquidGlass(ctx, pad, footY, innerW, footH, 28 * S, { light: false, sweep: (p * 1.5) % 1 });
+ui.drawDisplayText(ctx, String(P.title || "LIQUID GLASS"), pad + 32 * S, footY + 34 * S, innerW - 64 * S, {
+  size: Math.round(62 * S), gradient: ["#FFFFFF", accent]
+});
+fx.text.typewriter(ctx, String(P.subtitle || "REAL-TIME GPU RAYMARCHING"), pad + 32 * S, footY + 124 * S, Math.round(22 * S), "#CBE4FF", ui.seg(p, 0.10, 0.65), true);
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(255,255,255,0.18)");
 """
 
-    const val CUTE_STORY = """/*<studio-meta>
-{
-  "schemaVersion": 10,
-  "title": "Illustrated Botanical Story",
-  "defaultDurationSeconds": 10,
-  "seed": 55,
-  "props": [
-    {"key":"line1","label":"Cerita Bab 1","type":"text","default":"Mulai dari satu pot mungil di rumah."},
-    {"key":"line2","label":"Cerita Bab 2","type":"text","default":"Siram sabar setiap pagi sampai mekar!"},
-    {"key":"accent","label":"Warna Daun","type":"color","default":"#2B9B5E"},
-    {"key":"flower","label":"Warna Bunga","type":"color","default":"#FF6B7A"}
-  ],
-  "audio": {
-    "ambience": "lofi_garden",
-    "ambienceVolume": 0.16,
-    "cues": [
-      {"p": 0.02, "sfx": "kalimba_note", "gain": 0.56, "pitch": 1.0},
-      {"p": 0.24, "sfx": "water_drop", "gain": 0.58, "pitch": 1.0},
-      {"p": 0.36, "sfx": "water_drop", "gain": 0.54, "pitch": 1.15},
-      {"p": 0.46, "sfx": "swoosh_soft", "gain": 0.58},
-      {"p": 0.64, "sfx": "kalimba_note", "gain": 0.56, "pitch": 1.22},
-      {"p": 0.78, "sfx": "crystal_bloom", "gain": 0.58}
-    ]
-  }
-}
-</studio-meta>*/
-
-const accent = String(P.accent || "#2B9B5E");
-const flowerCol = String(P.flower || "#FF6B7A");
-const ink = "#1E2D24", pad = Math.min(W, H) * 0.068, innerW = W - pad * 2;
-
-function drawCuteFace(x, y, r, happy) {
-  ctx.save(); ctx.translate(x, y); const blink = (t % 3.2) > 3.04;
-  ctx.fillStyle = "rgba(255,120,140,0.42)"; ctx.beginPath();
-  ctx.ellipse(-r * 0.48, r * 0.16, r * 0.18, r * 0.11, 0, 0, Math.PI * 2);
-  ctx.ellipse(r * 0.48, r * 0.16, r * 0.18, r * 0.11, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = Math.max(2, r * 0.10); ctx.lineCap = "round";
-  [-1, 1].forEach((s) => {
-    ctx.beginPath();
-    if (blink || happy) { ctx.arc(s * r * 0.34, 0, r * 0.14, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); }
-    else { ctx.arc(s * r * 0.34, -r * 0.04, r * 0.12, 0, Math.PI * 2); ctx.fill(); }
-  });
-  ctx.beginPath(); ctx.arc(0, r * 0.10, r * 0.20, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); ctx.restore();
-}
-
-function drawPlantHero(growP, bloomP, showDrops) {
-  const cx = W * 0.5, potY = H * 0.77, potW = 280 * S, potH = 210 * S, soilY = potY - potH + 14 * S;
-  ctx.fillStyle = "#E8C6A2"; ctx.fillRect(0, potY - 10 * S, W, H - potY + 20 * S);
-  ctx.strokeStyle = ink; ctx.lineWidth = 3 * S; ctx.beginPath(); ctx.moveTo(0, potY - 10 * S); ctx.lineTo(W, potY - 10 * S); ctx.stroke();
-  if (growP > 0.02) {
-    const sh = 350 * S * growP, sway = Math.sin(t * 2.5) * 16 * S * growP, tipX = cx + sway, tipY = soilY - sh;
-    ctx.strokeStyle = ink; ctx.lineWidth = 15 * S; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(cx, soilY); ctx.quadraticCurveTo(cx - sway * 0.4, soilY - sh * 0.5, tipX, tipY); ctx.stroke();
-    ctx.strokeStyle = accent; ctx.lineWidth = 10 * S;
-    ctx.beginPath(); ctx.moveTo(cx, soilY); ctx.quadraticCurveTo(cx - sway * 0.4, soilY - sh * 0.5, tipX, tipY); ctx.stroke();
-    [-1, 1].forEach((side, idx) => {
-      const lu = 0.42 + idx * 0.20, lx = ui.lerp(cx, tipX, lu), ly = ui.lerp(soilY, tipY, lu), ls = ease.outBack(ui.seg(growP, 0.25 + idx * 0.15, 0.85));
-      if (ls > 0.02) {
-        ctx.save(); ctx.translate(lx, ly); ctx.rotate(side > 0 ? -0.65 : -2.48);
-        ctx.fillStyle = idx === 0 ? accent : "#52C488"; ctx.strokeStyle = ink; ctx.lineWidth = 2.8 * S;
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(50 * S * ls, -34 * S * ls, 102 * S * ls, 0);
-        ctx.quadraticCurveTo(50 * S * ls, 34 * S * ls, 0, 0); ctx.fill(); ctx.stroke(); ctx.restore();
-      }
-    });
-    if (bloomP > 0.02) {
-      ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(Math.sin(t * 2.2) * 0.07);
-      const bp = ease.outBack(bloomP); ctx.strokeStyle = ink; ctx.lineWidth = 3 * S;
-      for (let i = 0; i < 8; i++) {
-        const a = (i * Math.PI * 2) / 8 + t * 0.3; ctx.fillStyle = i % 2 === 0 ? flowerCol : "#FFA0AC";
-        ctx.beginPath(); ctx.arc(Math.cos(a) * 48 * S * bp, Math.sin(a) * 48 * S * bp, 31 * S * bp, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      }
-      ctx.fillStyle = "#FFD166"; ctx.beginPath(); ctx.arc(0, 0, 42 * S * bp, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      drawCuteFace(0, 2 * S, 34 * S * bp, true); ctx.restore();
-    }
-  }
-  if (showDrops) {
-    for (let i = 0; i < 3; i++) {
-      const du = (t * 0.95 + i * 0.33) % 1;
-      ctx.save(); ctx.globalAlpha = Math.sin(du * Math.PI);
-      ui.drawWaterDrop(ctx, cx + (i - 1) * 58 * S, ui.lerp(H * 0.34, soilY - 12 * S, ease.inQuad(du)), 22 * S, "#5AC8FA"); ctx.restore();
-    }
-  }
-  ctx.save(); ctx.translate(cx, potY); ctx.fillStyle = "#D66B43"; ctx.strokeStyle = ink; ctx.lineWidth = 3.4 * S;
-  ctx.beginPath(); ctx.moveTo(-potW * 0.42, -potH + 22 * S); ctx.lineTo(potW * 0.42, -potH + 22 * S);
-  ctx.lineTo(potW * 0.32, 0); ctx.lineTo(-potW * 0.32, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ui.rrect(ctx, -potW * 0.5, -potH, potW, 34 * S, 14 * S); ctx.fill(); ctx.stroke();
-  drawCuteFace(0, -potH * 0.36, 44 * S, bloomP > 0.3); ctx.restore();
-}
-
-function drawPart1(sp) {
-  const cState = fx.cameraRig(sp, [{ p: 0, x: 0, y: -14 * S, zoom: 1.07, rot: 0 }, { p: 1, x: 0, y: 12 * S, zoom: 1.0, rot: 0 }], 3 * S);
-  ui.drawMeshBg(ctx, W, H, "#FFF7EA", [{ x: 0.84, y: 0.14, r: 0.70, col: "#FFD166", a: 0.38 }, { x: 0.16, y: 0.80, r: 0.65, col: accent, a: 0.22 }], t);
-  ctx.save(); cam.apply(ctx, cState, 1.0);
-  drawPlantHero(ease.apple(ui.seg(sp, 0.25, 0.95)) * 0.38, 0, true);
-  ui.drawLiquidGlass(ctx, pad, pad + 34 * S, innerW, 215 * S, 28 * S, { light: true, sweep: sp });
-  fx.text.wordStagger(ctx, String(P.line1 || "Mulai dari satu pot mungil di rumah."), pad + 32 * S, pad + 72 * S, innerW - 64 * S, Math.round(48 * S), ink, 2, "left");
-  ctx.restore();
-}
-
-function drawPart2(sp) {
-  const cState = fx.cameraRig(sp, [{ p: 0, x: 0, y: 12 * S, zoom: 1.06, rot: 0 }, { p: 1, x: 0, y: -8 * S, zoom: 1.0, rot: 0 }], 3 * S);
-  ui.drawMeshBg(ctx, W, H, "#EEFBF2", [{ x: 0.50, y: 0.44, r: 0.78, col: accent, a: 0.26 }, { x: 0.82, y: 0.18, r: 0.56, col: flowerCol, a: 0.22 }], t);
-  ctx.save(); cam.apply(ctx, cState, 1.0);
-  drawPlantHero(ui.lerp(0.38, 1.0, ease.apple(ui.seg(sp, 0.0, 0.55))), ui.seg(sp, 0.24, 0.76), false);
-  ui.drawLiquidGlass(ctx, pad, pad + 34 * S, innerW, 215 * S, 28 * S, { light: true, sweep: sp });
-  fx.text.wordStagger(ctx, String(P.line2 || "Siram sabar setiap pagi sampai mekar!"), pad + 32 * S, pad + 72 * S, innerW - 64 * S, Math.round(48 * S), ink, Math.round(fps * 4.8), "left");
-  fx.particles.confetti(ctx, 24, [flowerCol, "#FFD166", accent, "#56CFE1"], ui.seg(sp, 0.32, 0.62));
-  ctx.restore();
-}
-
-if (p < 0.45) drawPart1(ui.seg(p, 0.0, 0.55));
-else if (p < 0.55) fx.transition.liquidWipe(ctx, ui.seg(p, 0.45, 0.55), () => drawPart1(ui.seg(p, 0.0, 0.55)), () => drawPart2(ui.seg(p, 0.45, 1.0)));
-else drawPart2(ui.seg(p, 0.45, 1.0));
-ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(29,44,34,0.14)");
-"""
+    // Backward-compatible aliases so any older references still compile cleanly
+    const val CHARACTER_STORY_3D = PIXAR_GARDEN_3D
+    const val CHROME_3D_GPU = APPLE_HARDWARE_3D
+    const val BOTANICAL_3D = ANIME_CEL_3D
+    const val DATA_STORY = PLANT_VS_PEST_3D
+    const val CUTE_STORY = LIQUID_GLASS_SHADER
 }
