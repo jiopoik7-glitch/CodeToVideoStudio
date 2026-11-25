@@ -900,7 +900,7 @@ fun StudioApp(activity: MainActivity) {
                 activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> input.copyTo(output) }
                     ?: throw IllegalStateException("File tujuan tidak bisa dibuka.")
             }
-        }.onSuccess { Toast.makeText(activity, "Dokumentasi v0.6 disimpan", Toast.LENGTH_SHORT).show() }
+        }.onSuccess { Toast.makeText(activity, "Dokumentasi v0.8 disimpan", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(activity, it.message ?: "Gagal menyimpan Docs", Toast.LENGTH_LONG).show() }
     }
 
@@ -1064,7 +1064,7 @@ fun StudioApp(activity: MainActivity) {
                                 onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
                                 onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
                             )
-                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v0.7.md") })
+                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v0.8.md") })
                         }
                     }
                 }
@@ -1166,7 +1166,7 @@ private fun TopGlassHeader(
             ) {
                 Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
                 Spacer(Modifier.width(5.dp))
-                Text("v0.7", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("v0.8", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
@@ -1220,7 +1220,7 @@ private fun EditorScreen(
     var showAudition by remember { mutableStateOf(false) }
 
     PageColumn {
-        SectionHeader("Editor Pro", "Engine v0.6 · 36 Studio Acoustic SFX, Live Render & Voiceover.", pal)
+        SectionHeader("Editor Pro", "Engine v0.8 · GPU 3D · 36 Studio Acoustic SFX, Live Render & Voiceover.", pal)
         GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Column(Modifier.weight(1f)) {
@@ -1305,7 +1305,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { showTemplates = false },
             containerColor = pal.dialogBg,
-            title = { Text("Template v0.6 Motion Director", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text("Template v0.8 GPU 3D Motion Director", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     GlassSecondaryButton("iOS 26 Liquid Glass Hero (5s)", pal, onClick = {
@@ -1316,7 +1316,11 @@ private fun EditorScreen(
                         onProjectChange(project.copy(name = "Swiss Data Editorial", sourceBody = app.codetovideo.studio.core.StudioTemplates.DATA_STORY, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("3D Velvet Rose Cinema (10s)", pal, onClick = {
+                    GlassSecondaryButton("3D GPU Chrome Monolith · WebGL (10s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "3D GPU Chrome Monolith", sourceBody = app.codetovideo.studio.core.StudioTemplates.CHROME_3D_GPU, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("3D GPU Velvet Rose · WebGL (10s)", pal, onClick = {
                         onProjectChange(project.copy(name = "3D Velvet Rose Cinema", sourceBody = app.codetovideo.studio.core.StudioTemplates.BOTANICAL_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
@@ -1832,11 +1836,11 @@ private fun DocsScreen(activity: MainActivity, pal: GlassPalette, onSave: () -> 
     val content = remember { activity.assets.open("docs/skill.md").bufferedReader().use { it.readText() } }
     val clipboard = LocalClipboardManager.current
     PageColumn {
-        SectionHeader("Docs v0.7", "Kitab Motion Director, Real Studio SFX & Live Engine.", pal)
+        SectionHeader("Docs v0.8", "Kitab Master GPU WebGL 3D, Motion Director & 36 Acoustic SFX.", pal)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GlassPrimaryButton("Salin Docs", pal, onClick = {
                 clipboard.setText(AnnotatedString(content))
-                Toast.makeText(activity, "Docs v0.7 disalin", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Docs v0.8 disalin", Toast.LENGTH_SHORT).show()
             }, modifier = Modifier.weight(1f))
             GlassSecondaryButton("Unduh .md", pal, onClick = onSave, modifier = Modifier.weight(1f))
         }
