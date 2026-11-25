@@ -2,6 +2,7 @@ package app.codetovideo.studio.render
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
@@ -11,6 +12,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import app.codetovideo.studio.core.ProjectMetadataParser
 import app.codetovideo.studio.core.StudioProject
+import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -32,6 +34,7 @@ class RenderController(private val context: Context, private val runtime: WebCan
     fun render(
         project: StudioProject,
         onProgress: (Int, Int) -> Unit,
+        onLiveFrame: (Bitmap) -> Unit = {},
         onComplete: (Result<Uri>) -> Unit
     ) {
         if (running) return
@@ -96,10 +99,14 @@ class RenderController(private val context: Context, private val runtime: WebCan
                 val previewStep = if (settings.fps >= 60) 3 else 2
                 for (frame in 0 until total) {
                     check(!cancelled.get()) { "Render dibatalkan." }
-                    val showLive = (frame == 0 || frame == total - 1 || frame % previewStep == 0)
-                    val rgba = runtime.requestExportFrame(project, frame, showLive).get(20, TimeUnit.SECONDS)
+                    val rgba = runtime.requestExportFrame(project, frame, false).get(20, TimeUnit.SECONDS)
                     check(rgba.size == width * height * 4) { "Ukuran payload frame $frame tidak valid." }
                     activeEncoder.writeFrame(frame, rgba)
+                    if (frame == 0 || frame == total - 1 || frame % previewStep == 0) {
+                        makePreviewBitmap(rgba, width, height)?.let { bmp ->
+                            main.post { onLiveFrame(bmp) }
+                        }
+                    }
                     val completed = frame + 1
                     main.post { onProgress(completed, total) }
                 }
@@ -127,6 +134,21 @@ class RenderController(private val context: Context, private val runtime: WebCan
         cancel()
         executor.shutdownNow()
     }
+
+    private fun makePreviewBitmap(rgba: ByteArray, width: Int, height: Int): Bitmap? = runCatching {
+        val full = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        full.copyPixelsFromBuffer(ByteBuffer.wrap(rgba))
+        val maxEdge = 480
+        val longest = maxOf(width, height)
+        if (longest > maxEdge) {
+            val scale = maxEdge.toFloat() / longest.toFloat()
+            val pw = (width * scale).toInt().coerceAtLeast(2)
+            val ph = (height * scale).toInt().coerceAtLeast(2)
+            Bitmap.createScaledBitmap(full, pw, ph, true).also { full.recycle() }
+        } else {
+            full
+        }
+    }.getOrNull()
 
     private fun validateVideo(uri: Uri) {
         val descriptor = context.contentResolver.openFileDescriptor(uri, "r")

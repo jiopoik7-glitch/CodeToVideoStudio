@@ -1,6 +1,10 @@
 package app.codetovideo.studio.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
@@ -844,6 +848,7 @@ fun StudioApp(activity: MainActivity) {
     var renderDone by remember { mutableIntStateOf(0) }
     var renderTotal by remember { mutableIntStateOf(0) }
     var renderStartMs by remember { mutableLongStateOf(0L) }
+    var liveRenderBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var renderMessage by remember { mutableStateOf("") }
     var refreshProjects by remember { mutableIntStateOf(0) }
     var refreshGallery by remember { mutableIntStateOf(0) }
@@ -985,6 +990,7 @@ fun StudioApp(activity: MainActivity) {
                                 renderDone = renderDone,
                                 renderTotal = renderTotal,
                                 renderStartMs = renderStartMs,
+                                liveBitmap = liveRenderBitmap,
                                 renderMessage = renderMessage,
                                 externalRefreshTick = previewTick,
                                 onPickVoiceover = { pickVoiceover.launch(arrayOf("audio/*")) },
@@ -995,6 +1001,7 @@ fun StudioApp(activity: MainActivity) {
                                     renderDone = 0
                                     renderTotal = project.renderSettings.totalFrames()
                                     renderStartMs = System.currentTimeMillis()
+                                    liveRenderBitmap = null
                                     activity.renderController.render(
                                         project,
                                         onProgress = { done, total ->
@@ -1002,8 +1009,10 @@ fun StudioApp(activity: MainActivity) {
                                             renderTotal = total
                                             renderMessage = "Merender frame $done dari $total"
                                         },
+                                        onLiveFrame = { bmp -> liveRenderBitmap = bmp },
                                         onComplete = { result ->
                                             isRendering = false
+                                            liveRenderBitmap = null
                                             result.onSuccess {
                                                 renderMessage = "MP4 selesai divalidasi & disimpan ke Movies/CodeToVideoStudio"
                                                 refreshGallery++
@@ -1015,7 +1024,7 @@ fun StudioApp(activity: MainActivity) {
                                         }
                                     )
                                 },
-                                onCancel = { activity.renderController.cancel(); renderMessage = "Permintaan pembatalan dikirim." }
+                                onCancel = { activity.renderController.cancel(); liveRenderBitmap = null; renderMessage = "Permintaan pembatalan dikirim." }
                             )
                             StudioTab.GALLERY -> GalleryScreen(
                                 activity = activity,
@@ -1157,7 +1166,7 @@ private fun TopGlassHeader(
             ) {
                 Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
                 Spacer(Modifier.width(5.dp))
-                Text("v0.6.1", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("v0.6.2", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
@@ -1424,6 +1433,7 @@ private fun RenderScreen(
     renderDone: Int,
     renderTotal: Int,
     renderStartMs: Long,
+    liveBitmap: Bitmap?,
     renderMessage: String,
     externalRefreshTick: Int,
     onPickVoiceover: () -> Unit,
@@ -1437,6 +1447,7 @@ private fun RenderScreen(
     val renderScroll = rememberScrollState()
     LaunchedEffect(isRendering) {
         if (isRendering) renderScroll.animateScrollTo(0)
+        else if (ready) onPreview(previewFrame)
     }
     var previewExpanded by remember { mutableStateOf(false) }
     var showAudition by remember { mutableStateOf(false) }
@@ -1488,6 +1499,14 @@ private fun RenderScreen(
                     modifier = Modifier.fillMaxSize(),
                     update = {}
                 )
+                if (isRendering && liveBitmap != null) {
+                    Image(
+                        bitmap = liveBitmap.asImageBitmap(),
+                        contentDescription = "Live Render Frame",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().background(Color(0xFF06080D))
+                    )
+                }
                 if (!ready) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
 
                 // LIVE TELEMETRY HUD melayang di atas preview saat rendering!

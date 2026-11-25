@@ -14,15 +14,15 @@ object StudioTemplates {
   ],
   "audio": {
     "ambience": "keynote_pulse",
-    "ambienceVolume": 0.22,
+    "ambienceVolume": 0.15,
     "cues": [
-      {"p": 0.01, "sfx": "air_whoosh", "gain": 0.72},
-      {"p": 0.16, "sfx": "tactile_tick", "gain": 0.65, "pitch": 1.0},
-      {"p": 0.30, "sfx": "felt_pluck", "gain": 0.72, "pitch": 1.08},
-      {"p": 0.48, "sfx": "whip", "gain": 0.84},
-      {"p": 0.60, "sfx": "tactile_tick", "gain": 0.65, "pitch": 1.12},
-      {"p": 0.72, "sfx": "felt_pluck", "gain": 0.74, "pitch": 1.20},
-      {"p": 0.84, "sfx": "crystal_bloom", "gain": 0.86}
+      {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.46},
+      {"p": 0.08, "sfx": "tactile_tick", "gain": 0.38, "pitch": 1.0},
+      {"p": 0.18, "sfx": "glass_tap", "gain": 0.40, "pitch": 1.06},
+      {"p": 0.46, "sfx": "glass_slide", "gain": 0.56},
+      {"p": 0.51, "sfx": "tactile_tick", "gain": 0.38, "pitch": 1.08},
+      {"p": 0.56, "sfx": "glass_tap", "gain": 0.40, "pitch": 1.15},
+      {"p": 0.82, "sfx": "chime", "gain": 0.46}
     ]
   }
 }
@@ -173,12 +173,12 @@ ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(12
   ],
   "audio": {
     "ambience": "botanical_air",
-    "ambienceVolume": 0.24,
+    "ambienceVolume": 0.16,
     "cues": [
-      {"p": 0.01, "sfx": "swoosh_deep", "gain": 0.72},
-      {"p": 0.26, "sfx": "crystal_bloom", "gain": 0.85},
-      {"p": 0.58, "sfx": "felt_pluck", "gain": 0.68, "pitch": 1.15},
-      {"p": 0.82, "sfx": "chime", "gain": 0.84}
+      {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.48},
+      {"p": 0.28, "sfx": "bloom", "gain": 0.46},
+      {"p": 0.65, "sfx": "glass_shimmer", "gain": 0.40, "pitch": 1.05},
+      {"p": 0.86, "sfx": "chime", "gain": 0.44}
     ]
   }
 }
@@ -297,7 +297,7 @@ ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, roseCol, "rgba(2
   ],
   "audio": {
     "ambience": "warm_pad",
-    "ambienceVolume": 0.22,
+    "ambienceVolume": 0.15,
     "cues": [
       {"p": 0.02, "sfx": "felt_pluck", "gain": 0.78, "pitch": 1.0},
       {"p": 0.22, "sfx": "water_drop", "gain": 0.78, "pitch": 1.02},

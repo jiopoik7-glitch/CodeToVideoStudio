@@ -118,13 +118,13 @@ const val DEFAULT_SOURCE = """/*<studio-meta>
   ],
   "audio": {
     "ambience": "keynote_pulse",
-    "ambienceVolume": 0.20,
+    "ambienceVolume": 0.14,
     "cues": [
-      {"p": 0.01, "sfx": "air_whoosh", "gain": 0.80},
-      {"p": 0.22, "sfx": "felt_pluck", "gain": 0.82, "pitch": 1.0},
-      {"p": 0.40, "sfx": "glass_tap", "gain": 0.82, "pitch": 1.08},
-      {"p": 0.62, "sfx": "tactile_tick", "gain": 0.72, "pitch": 1.04},
-      {"p": 0.76, "sfx": "crystal_bloom", "gain": 0.90}
+      {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.44, "pitch": 1.0},
+      {"p": 0.09, "sfx": "glass_tap", "gain": 0.42, "pitch": 1.0},
+      {"p": 0.14, "sfx": "glass_tap", "gain": 0.40, "pitch": 1.12},
+      {"p": 0.20, "sfx": "tactile_tick", "gain": 0.36, "pitch": 0.98},
+      {"p": 0.88, "sfx": "chime", "gain": 0.42, "pitch": 1.0}
     ]
   }
 }

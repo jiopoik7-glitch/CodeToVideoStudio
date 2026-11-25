@@ -119,3 +119,18 @@ All audio runs through a **Stereo Schroeder Reverb + Warm Tape Limiter**. Always
 - **15s (4–5 Beats):** `0.00–0.24` Hook -> `0.24–0.50` Proof/Story -> `0.50–0.76` Interactive/3D Showcase -> `0.76–1.00` Synthesis + Finale.
 
 **BEFORE OUTPUTTING CODE, VERIFY:** (1) Zero static holds > 0.5s; (2) High text contrast on both light & dark cards; (3) No jagged 3–5 vertex petals — use `d3.addOrganicPetal`; (4) SFX cues match exact transition `p` values; (5) Pure deterministic JS <= 256 KiB.
+
+---
+
+## 6. VISUAL-FIRST SOUND SPOTTING LAW (STRICT — ZERO RANDOM SFX)
+
+Never scatter SFX at arbitrary timestamps. Every single entry in `audio.cues` MUST be mathematically locked to a real physical visual event in your animation code:
+
+1. **Compute Exact Onset Formula:** If an element starts springing in at `frame = F` on a video of duration `D` seconds at `fps`, place its SFX at `"at": F / fps` (or `"p": F / (D * fps)`). Example: Card 1 enters at `frame = 14` (`30fps`, `5s`) -> `"p": 0.09` (`0.47s`).
+2. **Silence During Holds:** NEVER drop clicks, pops, or chimes in the middle of a calm hold/cruise when no card enters, no scene cuts, and no counter hits a milestone.
+3. **Editorial Gain Staging (Subtle & Expensive):**
+   - Micro UI entrances (`glass_tap`, `tactile_tick`, `click`, `pop`): `gain: 0.34 – 0.46` (raise pitch slightly `+0.08` per staggered card).
+   - Spatial scene transitions (`swoosh_soft`, `air_whoosh`, `glass_slide`, `whip`): `gain: 0.46 – 0.62`, placed exactly at the transition start `p`.
+   - Finale lockups & 100% milestones (`chime`, `bloom`, `crystal_bloom`): `gain: 0.42 – 0.54`, max **1** finale chime per video.
+   - Ambience bed (`ambienceVolume`): keep subtle at `0.12 – 0.18` so it supports rather than competes with voiceover/SFX.
+4. **Spotting Budget:** Maximum **4–5 cues** for 5s videos, **6–9 cues** for 10s–15s videos. Every cue must justify a visible motion beat.
