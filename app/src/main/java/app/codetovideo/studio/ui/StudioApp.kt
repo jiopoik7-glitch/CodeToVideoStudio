@@ -900,7 +900,7 @@ fun StudioApp(activity: MainActivity) {
                 activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> input.copyTo(output) }
                     ?: throw IllegalStateException("File tujuan tidak bisa dibuka.")
             }
-        }.onSuccess { Toast.makeText(activity, "Dokumentasi v0.9 disimpan", Toast.LENGTH_SHORT).show() }
+        }.onSuccess { Toast.makeText(activity, "Dokumentasi v1.0 disimpan", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(activity, it.message ?: "Gagal menyimpan Docs", Toast.LENGTH_LONG).show() }
     }
 
@@ -1064,7 +1064,7 @@ fun StudioApp(activity: MainActivity) {
                                 onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
                                 onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
                             )
-                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v0.9.md") })
+                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v1.0.md") })
                         }
                     }
                 }
@@ -1166,7 +1166,7 @@ private fun TopGlassHeader(
             ) {
                 Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
                 Spacer(Modifier.width(5.dp))
-                Text("v0.9", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("v1.0", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
@@ -1220,7 +1220,7 @@ private fun EditorScreen(
     var showAudition by remember { mutableStateOf(false) }
 
     PageColumn {
-        SectionHeader("Editor Pro", "Engine v0.9 · 3D Character · 36 Studio Acoustic SFX, Live Render & Voiceover.", pal)
+        SectionHeader("Editor Pro", "Engine v1.0 · Cinema 3D PBR · 36 Studio Acoustic SFX, Live Render & Voiceover.", pal)
         GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Column(Modifier.weight(1f)) {
@@ -1305,7 +1305,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { showTemplates = false },
             containerColor = pal.dialogBg,
-            title = { Text("Template v0.9 3D Character Motion Director", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text("Template v1.0 Cinema 3D Motion Director", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     GlassSecondaryButton("iOS 26 Liquid Glass Hero (5s)", pal, onClick = {
@@ -1840,11 +1840,11 @@ private fun DocsScreen(activity: MainActivity, pal: GlassPalette, onSave: () -> 
     val content = remember { activity.assets.open("docs/skill.md").bufferedReader().use { it.readText() } }
     val clipboard = LocalClipboardManager.current
     PageColumn {
-        SectionHeader("Docs v0.9", "Kitab 3D Character Rigging, GPU PBR & Motion Director.", pal)
+        SectionHeader("Docs v1.0", "Kitab Shadow-Mapped 3D PBR, Character Rigging & Motion Director.", pal)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GlassPrimaryButton("Salin Docs", pal, onClick = {
                 clipboard.setText(AnnotatedString(content))
-                Toast.makeText(activity, "Docs v0.9 disalin", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Docs v1.0 disalin", Toast.LENGTH_SHORT).show()
             }, modifier = Modifier.weight(1f))
             GlassSecondaryButton("Unduh .md", pal, onClick = onSave, modifier = Modifier.weight(1f))
         }
