@@ -1422,14 +1422,14 @@ private fun RenderScreen(
     var previewFrame by remember(project.projectId) {
         mutableIntStateOf(project.renderSettings.fps.coerceIn(0, (project.renderSettings.totalFrames() - 1).coerceAtLeast(0)))
     }
+    var isPlayingPreview by remember { mutableStateOf(false) }
+    var previewHalfSpeed by remember { mutableStateOf(false) }
     val renderScroll = rememberScrollState()
     LaunchedEffect(isRendering) {
         if (isRendering) { isPlayingPreview = false; renderScroll.animateScrollTo(0) }
         else if (ready) onPreview(previewFrame)
     }
     var previewExpanded by remember { mutableStateOf(false) }
-    var isPlayingPreview by remember { mutableStateOf(false) }
-    var previewHalfSpeed by remember { mutableStateOf(false) }
     var showAudition by remember { mutableStateOf(false) }
     val previewHeight by animateDpAsState(if (previewExpanded) 480.dp else 270.dp, spring(0.75f, 380f), label = "prev_h")
 
