@@ -134,3 +134,11 @@ Never scatter SFX at arbitrary timestamps. Every single entry in `audio.cues` MU
    - Finale lockups & 100% milestones (`chime`, `bloom`, `crystal_bloom`): `gain: 0.42 – 0.54`, max **1** finale chime per video.
    - Ambience bed (`ambienceVolume`): keep subtle at `0.12 – 0.18` so it supports rather than competes with voiceover/SFX.
 4. **Spotting Budget:** Maximum **4–5 cues** for 5s videos, **6–9 cues** for 10s–15s videos. Every cue must justify a visible motion beat.
+
+---
+
+## 7. v0.7 ACOUSTIC PHYSICAL MODELING ADDITIONS (`schemaVersion: 7`)
+
+- **New Flagship SFX Slots:** `taptic_thock` (signature iOS soft pop for cards), `paper_slide` (crisp editorial swipe), `wood_tap` (warm acoustic wood click), `kalimba_note` (gentle organic pluck).
+- **New Evolving Ambience Beds:** `documentary_pulse` (106 BPM subtle acoustic storytelling pulse), `lofi_garden` (warm evolving Rhodes chords + organic softness). All ambience beds now feature smooth 4-chord progressions instead of static drones.
+- **Custom SFX Support:** Any SFX slot name can be overridden by the user in **Studio SFX Manager** with their own `.mp3`/`.wav`/`.m4a` file. Keep `gain` balanced (`0.42–0.60` for UI/transitions, `0.48–0.62` for acoustic blooms).

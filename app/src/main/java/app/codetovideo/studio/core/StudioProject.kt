@@ -106,12 +106,12 @@ data class StudioProject(
 
 const val DEFAULT_SOURCE = """/*<studio-meta>
 {
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "title": "iOS 26 Liquid Glass Keynote",
   "defaultDurationSeconds": 5,
   "seed": 26,
   "props": [
-    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.6"},
+    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.7"},
     {"key":"title","label":"Judul Utama","type":"text","default":"Desain kaca yang"},
     {"key":"highlight","label":"Kata Aksen","type":"text","default":"mengalir."},
     {"key":"accent","label":"Warna Aksen","type":"color","default":"#DCE8F5"}
@@ -120,11 +120,11 @@ const val DEFAULT_SOURCE = """/*<studio-meta>
     "ambience": "keynote_pulse",
     "ambienceVolume": 0.14,
     "cues": [
-      {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.44, "pitch": 1.0},
-      {"p": 0.09, "sfx": "glass_tap", "gain": 0.42, "pitch": 1.0},
-      {"p": 0.14, "sfx": "glass_tap", "gain": 0.40, "pitch": 1.12},
-      {"p": 0.20, "sfx": "tactile_tick", "gain": 0.36, "pitch": 0.98},
-      {"p": 0.88, "sfx": "chime", "gain": 0.42, "pitch": 1.0}
+      {"p": 0.01, "sfx": "air_whoosh", "gain": 0.52, "pitch": 1.0},
+      {"p": 0.09, "sfx": "taptic_thock", "gain": 0.56, "pitch": 1.0},
+      {"p": 0.14, "sfx": "taptic_thock", "gain": 0.52, "pitch": 1.12},
+      {"p": 0.21, "sfx": "glass_tap", "gain": 0.48, "pitch": 1.05},
+      {"p": 0.84, "sfx": "chime", "gain": 0.56, "pitch": 1.0}
     ]
   }
 }
@@ -158,7 +158,7 @@ const pillP = fx.stagger(frame, 0, 4);
 ctx.save();
 ctx.globalAlpha = ui.clamp(pillP, 0, 1);
 ctx.translate(0, (1 - pillP) * 18 * S);
-ui.drawPill(ctx, pad, H * 0.14, String(P.eyebrow || "RENDER VIDEO CODE V0.6"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
+ui.drawPill(ctx, pad, H * 0.14, String(P.eyebrow || "RENDER VIDEO CODE V0.7"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
 ctx.restore();
 
 const fSize = Math.round(80 * S);
@@ -168,7 +168,7 @@ const used = ui.drawRichText(ctx, [
 ], pad, H * 0.21, innerW, fSize, fSize * 1.18, "#FFFFFF", ui.seg(p, 0.05, 0.42), "left");
 
 const cards = [
-  { title: "Real Studio SFX Library", sub: "32 rekaman WAV asli + Voiceover Mixer", val: 0.96, lbl: "96%" },
+  { title: "Real Studio SFX Library", sub: "36 SFX Akustik + Impor Audio Sendiri", val: 0.96, lbl: "96%" },
   { title: "Live Render Preview HUD", sub: "Pantau frame, FPS & ETA real-time", val: 1.00, lbl: "100%" }
 ];
 const cH = 176 * S;

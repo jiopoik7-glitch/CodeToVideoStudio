@@ -3,7 +3,7 @@ package app.codetovideo.studio.core
 object StudioTemplates {
     const val DATA_STORY = """/*<studio-meta>
 {
-  "schemaVersion": 5,
+  "schemaVersion": 7,
   "title": "Swiss Data Editorial",
   "defaultDurationSeconds": 10,
   "seed": 44,
@@ -13,16 +13,16 @@ object StudioTemplates {
     {"key":"accent","label":"Warna Aksen","type":"color","default":"#23A455"}
   ],
   "audio": {
-    "ambience": "keynote_pulse",
+    "ambience": "documentary_pulse",
     "ambienceVolume": 0.15,
     "cues": [
       {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.46},
-      {"p": 0.08, "sfx": "tactile_tick", "gain": 0.38, "pitch": 1.0},
-      {"p": 0.18, "sfx": "glass_tap", "gain": 0.40, "pitch": 1.06},
-      {"p": 0.46, "sfx": "glass_slide", "gain": 0.56},
-      {"p": 0.51, "sfx": "tactile_tick", "gain": 0.38, "pitch": 1.08},
-      {"p": 0.56, "sfx": "glass_tap", "gain": 0.40, "pitch": 1.15},
-      {"p": 0.82, "sfx": "chime", "gain": 0.46}
+      {"p": 0.08, "sfx": "taptic_thock", "gain": 0.50, "pitch": 1.0},
+      {"p": 0.18, "sfx": "taptic_thock", "gain": 0.48, "pitch": 1.12},
+      {"p": 0.45, "sfx": "air_whoosh", "gain": 0.58},
+      {"p": 0.50, "sfx": "wood_tap", "gain": 0.46, "pitch": 1.04},
+      {"p": 0.56, "sfx": "taptic_thock", "gain": 0.46, "pitch": 1.14},
+      {"p": 0.82, "sfx": "crystal_bloom", "gain": 0.56}
     ]
   }
 }
@@ -161,7 +161,7 @@ ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, accent, "rgba(12
 
     const val BOTANICAL_3D = """/*<studio-meta>
 {
-  "schemaVersion": 5,
+  "schemaVersion": 7,
   "title": "3D Velvet Rose Cinema",
   "defaultDurationSeconds": 10,
   "seed": 77,
@@ -285,7 +285,7 @@ ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, roseCol, "rgba(2
 
     const val CUTE_STORY = """/*<studio-meta>
 {
-  "schemaVersion": 5,
+  "schemaVersion": 7,
   "title": "Illustrated Botanical Story",
   "defaultDurationSeconds": 10,
   "seed": 55,
@@ -296,15 +296,15 @@ ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, roseCol, "rgba(2
     {"key":"flower","label":"Warna Bunga","type":"color","default":"#FF6B7A"}
   ],
   "audio": {
-    "ambience": "warm_pad",
+    "ambience": "lofi_garden",
     "ambienceVolume": 0.15,
     "cues": [
-      {"p": 0.02, "sfx": "felt_pluck", "gain": 0.78, "pitch": 1.0},
-      {"p": 0.22, "sfx": "water_drop", "gain": 0.78, "pitch": 1.02},
-      {"p": 0.34, "sfx": "water_drop", "gain": 0.72, "pitch": 1.18},
-      {"p": 0.48, "sfx": "air_whoosh", "gain": 0.80},
-      {"p": 0.66, "sfx": "felt_pluck", "gain": 0.78, "pitch": 1.25},
-      {"p": 0.80, "sfx": "crystal_bloom", "gain": 0.88}
+      {"p": 0.02, "sfx": "kalimba_note", "gain": 0.56, "pitch": 1.0},
+      {"p": 0.24, "sfx": "water_drop", "gain": 0.58, "pitch": 1.0},
+      {"p": 0.36, "sfx": "water_drop", "gain": 0.54, "pitch": 1.15},
+      {"p": 0.46, "sfx": "swoosh_soft", "gain": 0.58},
+      {"p": 0.64, "sfx": "kalimba_note", "gain": 0.56, "pitch": 1.22},
+      {"p": 0.78, "sfx": "crystal_bloom", "gain": 0.58}
     ]
   }
 }

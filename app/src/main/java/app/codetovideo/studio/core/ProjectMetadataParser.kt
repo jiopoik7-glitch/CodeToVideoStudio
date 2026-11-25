@@ -49,7 +49,7 @@ object ProjectMetadataParser {
         val jsonText = source.substring(start + OPEN.length, end).trim()
         val json = JSONObject(jsonText)
         val version = json.optInt("schemaVersion", 1)
-        require(version in 1..6) { "Schema metadata tidak didukung." }
+        require(version in 1..7) { "Schema metadata tidak didukung." }
 
         val propsArray = json.optJSONArray("props")
         require(propsArray == null || propsArray.length() <= 48) { "Maksimal 48 Props." }

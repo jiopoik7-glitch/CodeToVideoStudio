@@ -7,9 +7,11 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import app.codetovideo.studio.core.StudioAudioConfig
+import java.io.File
 import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -29,10 +31,12 @@ data class EncodedAudioTrack(
 )
 
 /**
- * Hybrid Studio Audio Engine v0.6:
- * 1) Real Studio WAV Samples from assets/sfx/ (pitch-shifted & stereo-panned)
- * 2) External Voiceover / BGM Decoder (MP3/WAV/M4A) with Smooth Auto-Ducking
- * 3) Master Stereo Schroeder Reverb + Warm Tape Limiter -> 160 kbps Stereo AAC
+ * Studio Acoustics & Physical Modeling Audio Engine v0.7:
+ * - Zero-resonance cascaded air filters + Stereo Doppler pan for silky cinema whooshes
+ * - Karplus-Strong physical string modeling for warm felt piano, harp & kalimba accents
+ * - Apple Taptic & Leica mechanical micro-foley impulses + Minnaert droplet physics
+ * - Evolving multi-chord Ambience Beds (10 beds) with smooth harmonic crossfades
+ * - Custom User SFX override support (.mp3/.wav/.m4a) + Voiceover Auto-Ducking
  */
 object ProceduralAudioEngine {
     const val SAMPLE_RATE = 44_100
@@ -46,12 +50,14 @@ object ProceduralAudioEngine {
         private var state = if (seed == 0) 0x9E3779B9.toInt() else seed
         private var b0 = 0f; private var b1 = 0f; private var b2 = 0f
         private var b3 = 0f; private var b4 = 0f; private var b5 = 0f; private var b6 = 0f
+
         fun nextWhite(): Float {
             var x = state
             x = x xor (x shl 13); x = x xor (x ushr 17); x = x xor (x shl 5)
             state = x
             return ((x and 0x7FFFFFFF).toFloat() / 0x3FFFFFFF.toFloat()) - 1f
         }
+
         fun nextPink(): Float {
             val w = nextWhite()
             b0 = 0.99886f * b0 + w * 0.0555179f
@@ -66,13 +72,49 @@ object ProceduralAudioEngine {
         }
     }
 
-    private class SvFilter {
-        var low = 0f; var band = 0f; var high = 0f
-        fun step(input: Float, freqHz: Double, damp: Float) {
-            val f = (2.0 * sin(PI * freqHz.coerceIn(30.0, 9500.0) / SAMPLE_RATE)).toFloat().coerceIn(0.002f, 0.82f)
-            val q = damp.coerceIn(0.28f, 1.8f)
-            low += f * band; high = input - low - q * band; band += f * high
-            if (!low.isFinite()) low = 0f; if (!band.isFinite()) band = 0f; if (!high.isFinite()) high = 0f
+    /** Zero-resonance 2-pole cascaded LP + 1-pole HP for silky, natural, non-whistling air */
+    private class SilkyAirFilter {
+        private var lp1 = 0f
+        private var lp2 = 0f
+        private var hp = 0f
+        private var prevX = 0f
+
+        fun step(input: Float, lpHz: Double, hpHz: Double): Float {
+            val aLp = (1.0 - exp(-TWO_PI * lpHz.coerceIn(60.0, 14000.0) / SAMPLE_RATE)).toFloat()
+            val aHp = exp(-TWO_PI * hpHz.coerceIn(20.0, 6000.0) / SAMPLE_RATE).toFloat()
+            hp = aHp * (hp + input - prevX)
+            prevX = input
+            lp1 += aLp * (hp - lp1)
+            lp2 += aLp * (lp1 - lp2)
+            return lp2
+        }
+    }
+
+    /** Physical Karplus-Strong plucked string with soft felt excitation */
+    private class KarplusVoice(freqHz: Double, brightness: Float, private val decay: Float, rng: FastRng) {
+        private val len = (SAMPLE_RATE / freqHz.coerceIn(65.0, 3800.0)).toInt().coerceIn(10, 1800)
+        private val buf = FloatArray(len)
+        private var idx = 0
+
+        init {
+            var smooth = 0f
+            val lpA = brightness.coerceIn(0.08f, 0.72f)
+            for (i in 0 until len) {
+                val u = i.toDouble() / len
+                // Warm felt hammer burst (no harsh metallic pick snap)
+                val exc = (rng.nextPink() * 0.65f + sin(TWO_PI * u).toFloat() * 0.55f)
+                smooth += lpA * (exc - smooth)
+                buf[i] = smooth
+            }
+        }
+
+        fun step(): Float {
+            val cur = buf[idx]
+            val next = buf[(idx + 1) % len]
+            val filtered = 0.5f * (cur + next) * decay
+            buf[idx] = filtered
+            if (++idx >= len) idx = 0
+            return cur
         }
     }
 
@@ -97,19 +139,28 @@ object ProceduralAudioEngine {
         }
     }
 
-    /** Synthesize a single SFX clip to 16-bit Stereo PCM for instant Audition playback */
     fun synthesizeSingleSfxPcm(context: Context, sfx: String, pitch: Float = 1.0f): ByteArray {
-        val durFrames = (2.0 * SAMPLE_RATE).toInt()
+        val durFrames = (1.6 * SAMPLE_RATE).toInt()
         val dry = FloatArray(durFrames * CHANNELS)
         val rev = FloatArray(durFrames * CHANNELS)
         val cache = HashMap<String, WavSample?>()
-        val wav = loadWavAsset(context, sfx, cache)
-        if (wav != null) {
-            mixWavSample(dry, rev, durFrames, 0, wav, 0.95f, pitch, 0f, 0.14f)
+        val customOrAsset = loadExternalSfx(context, sfx, cache)
+        if (customOrAsset != null) {
+            mixWavSample(dry, rev, durFrames, 0, customOrAsset, 0.92f, pitch, 0f, 0.14f)
         } else {
-            renderFallbackSfx(dry, rev, durFrames, 0, sfx, 0.9f, pitch, 0f, FastRng(sfx.hashCode()))
+            renderAcousticSfx(dry, rev, durFrames, 0, sfx, 0.90f, pitch, 0f, FastRng(sfx.hashCode() * 31 + 7))
         }
         return masterToPcm16(dry, rev, null, durFrames, 1f, false)
+    }
+
+    fun synthesizeAmbiencePreviewPcm(ambience: String): ByteArray {
+        if (ambience == "none") return ByteArray(0)
+        val durSec = 3.8
+        val totalFrames = (durSec * SAMPLE_RATE).toInt()
+        val dry = FloatArray(totalFrames * CHANNELS)
+        val rev = FloatArray(totalFrames * CHANNELS)
+        renderAmbience(dry, rev, totalFrames, durSec, ambience, 0.58f, FastRng(ambience.hashCode() + 42))
+        return masterToPcm16(dry, rev, null, totalFrames, 1f, true)
     }
 
     fun synthesizeAndEncode(
@@ -131,37 +182,34 @@ object ProceduralAudioEngine {
         val rng = FastRng(seed * 31 + 17)
         val wavCache = HashMap<String, WavSample?>()
 
-        // 1. Decode external Voiceover / BGM if selected
         val voiceoverMix = if (voiceoverUri.isNotBlank() && voiceoverGain > 0.01f) {
             runCatching { decodeAudioUri(context, voiceoverUri, totalFrames) }.getOrNull()
         } else null
 
-        // 2. Render Ambience Bed
         val effAmbVol = (config.ambienceVolume * ambienceMasterGain).coerceIn(0f, 1.2f)
         if (config.ambience != "none" && effAmbVol > 0.005f) {
             renderAmbience(ambDry, revSend, totalFrames, dur.toDouble(), config.ambience, effAmbVol, rng)
         }
 
-        // 3. Render Every SFX Cue (Prefer REAL Studio WAV Asset, fallback to DSP)
         if (sfxMasterGain > 0.005f) {
             config.cues.forEachIndexed { idx, cue ->
                 val timeSec = if (cue.atProgress != null) cue.atProgress * dur.toDouble() else cue.atSeconds
                 val startFrame = (timeSec * SAMPLE_RATE).toInt()
                 if (startFrame in 0 until totalFrames) {
-                    val pan = ((idx % 3) - 1) * 0.14f
-                    val gain = (cue.gain * sfxMasterGain).coerceIn(0f, 1.6f)
-                    val wav = loadWavAsset(context, cue.sfx, wavCache)
-                    if (wav != null) {
-                        mixWavSample(sfxDry, revSend, totalFrames, startFrame, wav, gain, cue.pitch, pan, 0.14f)
+                    val pan = ((idx % 3) - 1) * 0.12f
+                    val gain = (cue.gain * sfxMasterGain).coerceIn(0f, 1.5f)
+                    val customOrAsset = loadExternalSfx(context, cue.sfx, wavCache)
+                    if (customOrAsset != null) {
+                        mixWavSample(sfxDry, revSend, totalFrames, startFrame, customOrAsset, gain, cue.pitch, pan, 0.14f)
                     } else {
                         val cueRng = FastRng(seed * 131 + idx * 977 + cue.sfx.hashCode())
-                        renderFallbackSfx(sfxDry, revSend, totalFrames, startFrame, cue.sfx, gain, cue.pitch, pan, cueRng)
+                        renderAcousticSfx(sfxDry, revSend, totalFrames, startFrame, cue.sfx, gain, cue.pitch, pan, cueRng)
                     }
                 }
             }
         }
 
-        // 4. Combine Ambience (with smooth Auto-Ducking under Voiceover) + SFX + Reverb + Voiceover
+        // Combine Ambience (with smooth Auto-Ducking under Voiceover) + SFX in-place
         var duckEnv = 0f
         for (i in 0 until totalFrames) {
             val base = i * CHANNELS
@@ -179,17 +227,429 @@ object ProceduralAudioEngine {
         return encodePcmToAac(pcm)
     }
 
-    private fun loadWavAsset(context: Context, rawName: String, cache: HashMap<String, WavSample?>): WavSample? {
+    /** Checks User Custom SFX first, then optional assets/sfx/ WAV override. */
+    private fun loadExternalSfx(context: Context, rawName: String, cache: HashMap<String, WavSample?>): WavSample? {
         val key = rawName.trim().lowercase().replace(Regex("[^a-z0-9_]"), "")
         if (cache.containsKey(key)) return cache[key]
-        val sample = runCatching {
-            val bytes = context.assets.open("sfx/$key.wav").use { it.readBytes() }
-            parseWav(bytes)
-        }.getOrNull()
+        val customFile: File? = CustomSfxRepository.getCustomFile(context, key)
+        val sample = if (customFile != null) {
+            runCatching { parseWav(customFile.readBytes()) }.getOrNull()
+        } else {
+            runCatching {
+                val bytes = context.assets.open("sfx/$key.wav").use { it.readBytes() }
+                parseWav(bytes)
+            }.getOrNull()
+        }
         cache[key] = sample
         return sample
     }
 
+    private fun addStereo(dry: FloatArray, rev: FloatArray, totalFrames: Int, frameIdx: Int, l: Float, r: Float, send: Float) {
+        if (frameIdx < 0 || frameIdx >= totalFrames) return
+        val base = frameIdx * CHANNELS
+        dry[base] += l
+        dry[base + 1] += r
+        if (send > 0.001f) {
+            rev[base] += l * send
+            rev[base + 1] += r * send
+        }
+    }
+
+    // =========================================================================
+    // PHYSICAL MODELING ACOUSTIC SFX SYNTHESIZER (36 SFX — ZERO ROBOTIC BEEP!)
+    // =========================================================================
+    private fun renderAcousticSfx(
+        dry: FloatArray,
+        rev: FloatArray,
+        totalFrames: Int,
+        start: Int,
+        sfx: String,
+        gain: Float,
+        pitch: Float,
+        pan: Float,
+        rng: FastRng
+    ) {
+        val gL = gain * (1f - max(0f, pan))
+        val gR = gain * (1f + min(0f, pan))
+
+        // 1) Silky Zero-Resonance Doppler Cinema Air Whoosh
+        fun writeSilkyWhoosh(
+            dur: Double,
+            lpMin: Double,
+            lpMax: Double,
+            hpHz: Double,
+            peakAt: Double,
+            dopplerSpan: Float,
+            chestSubHz: Double = 0.0,
+            revSend: Float = 0.42f
+        ) {
+            val n = (dur * SAMPLE_RATE).toInt()
+            val fL = SilkyAirFilter()
+            val fR = SilkyAirFilter()
+            var subPh = 0.0
+            for (i in 0 until n) {
+                val u = i.toDouble() / n
+                val env = if (u < peakAt) (u / peakAt).pow(1.9) else ((1.0 - u) / (1.0 - peakAt)).pow(2.5)
+                val shape = sin(u * PI).pow(1.45)
+                val lp = (lpMin + (lpMax - lpMin) * shape) * pitch
+                val rawL = fL.step(rng.nextPink(), lp, hpHz)
+                val rawR = fR.step(rng.nextPink(), lp * 1.03, hpHz)
+                val sweepPan = ((u - 0.5) * 2.0).toFloat() * dopplerSpan
+                val pL = 1f - max(0f, sweepPan)
+                val pR = 1f + min(0f, sweepPan)
+                var sub = 0f
+                if (chestSubHz > 0.0) {
+                    subPh += TWO_PI * (chestSubHz * (1.0 - 0.30 * u)) / SAMPLE_RATE
+                    sub = sin(subPh).toFloat() * 0.24f * sin(u * PI).pow(1.6).toFloat()
+                }
+                val e = env.toFloat() * 1.25f
+                addStereo(dry, rev, totalFrames, start + i, (rawL * pL + sub) * e * gL, (rawR * pR + sub) * e * gR, revSend)
+            }
+        }
+
+        // 2) Apple Taptic / Leica Tactile Micro-Impulse
+        fun writeTapticImpulse(
+            dur: Double,
+            fStart: Double,
+            fEnd: Double,
+            bodyDecay: Double,
+            clickLp: Double,
+            clickHp: Double,
+            clickAmp: Float,
+            revSend: Float = 0.14f
+        ) {
+            val n = (dur * SAMPLE_RATE).toInt()
+            val air = SilkyAirFilter()
+            var ph = 0.0
+            for (i in 0 until n) {
+                val t = i.toDouble() / SAMPLE_RATE
+                val att = min(1.0, t / 0.0018)
+                val bEnv = att * exp(-t * bodyDecay)
+                val cEnv = exp(-t * 280.0)
+                val f = (fEnd + (fStart - fEnd) * exp(-t * 140.0)) * pitch
+                ph += TWO_PI * f / SAMPLE_RATE
+                val body = sin(ph) * bEnv * 0.68
+                val click = air.step(rng.nextWhite(), clickLp * pitch, clickHp * pitch) * cEnv * clickAmp
+                val out = (body + click).toFloat()
+                addStereo(dry, rev, totalFrames, start + i, out * gL, out * gR, revSend)
+            }
+        }
+
+        // 3) Karplus-Strong Acoustic Felt Pluck / Harp / Kalimba
+        fun writeAcousticPluck(
+            notes: DoubleArray,
+            dur: Double,
+            strumSec: Double,
+            brightness: Float,
+            stringDecay: Float,
+            ampScale: Float,
+            revSend: Float = 0.68f
+        ) {
+            val n = (dur * SAMPLE_RATE).toInt()
+            val voices = notes.map { KarplusVoice(it * pitch, brightness, stringDecay, rng) }
+            val startOffsets = notes.indices.map { (it * strumSec * SAMPLE_RATE).toInt() }
+            val lpL = SilkyAirFilter(); val lpR = SilkyAirFilter()
+            for (i in 0 until n) {
+                var l = 0f; var r = 0f
+                for (k in voices.indices) {
+                    val dtSamp = i - startOffsets[k]
+                    if (dtSamp < 0) continue
+                    val dt = dtSamp.toDouble() / SAMPLE_RATE
+                    val att = min(1.0, dt / 0.006)
+                    val tail = exp(-dt * 2.4)
+                    val s = voices[k].step() * (att * tail).toFloat() * (ampScale / (1f + k * 0.22f))
+                    val spread = if (notes.size == 1) 1f else (0.78f + (k.toFloat() / max(1, notes.size - 1)) * 0.44f)
+                    l += s * spread
+                    r += s * (2f - spread)
+                }
+                val outL = lpL.step(l, 4200.0, 55.0)
+                val outR = lpR.step(r, 4200.0, 55.0)
+                addStereo(dry, rev, totalFrames, start + i, outL * gL, outR * gR, revSend)
+            }
+        }
+
+        // 4) Frosted Quartz Glass Tap / Wood Tap (Modal Resonance, ZERO loud bell!)
+        fun writeModalTap(baseHz: Double, ratio2: Double, dur: Double, decay1: Double, decay2: Double, amp: Float, revSend: Float) {
+            val n = (dur * SAMPLE_RATE).toInt()
+            val tapF = SilkyAirFilter()
+            val f1 = baseHz * pitch
+            val f2 = baseHz * ratio2 * pitch
+            for (i in 0 until n) {
+                val t = i.toDouble() / SAMPLE_RATE
+                val att = min(1.0, t / 0.0022)
+                val m1 = sin(TWO_PI * f1 * t) * exp(-t * decay1) * 0.72
+                val m2 = sin(TWO_PI * f2 * t) * exp(-t * decay2) * 0.24
+                val hit = tapF.step(rng.nextPink(), 2600.0, 420.0) * exp(-t * 210.0) * 0.35
+                val s = ((m1 + m2 + hit) * att).toFloat() * amp
+                addStereo(dry, rev, totalFrames, start + i, s * gL, s * gR, revSend)
+            }
+        }
+
+        when (sfx) {
+            // --- TRANSITIONS (SILKY AIR & MOTION SWEEPS) ---
+            "air_whoosh" -> writeSilkyWhoosh(0.46, 160.0, 1550.0, 95.0, 0.40, 0.42f, 64.0, 0.46f)
+            "whoosh" -> writeSilkyWhoosh(0.42, 180.0, 1850.0, 110.0, 0.38, 0.45f, 70.0, 0.44f)
+            "whip" -> writeSilkyWhoosh(0.24, 240.0, 2900.0, 140.0, 0.28, 0.55f, 84.0, 0.32f)
+            "swoosh_soft" -> writeSilkyWhoosh(0.48, 140.0, 1050.0, 85.0, 0.44, 0.34f, 56.0, 0.50f)
+            "swoosh_deep" -> writeSilkyWhoosh(0.76, 95.0, 680.0, 55.0, 0.38, 0.36f, 48.0, 0.58f)
+            "glass_slide" -> {
+                writeSilkyWhoosh(0.32, 260.0, 2200.0, 180.0, 0.36, 0.48f, 0.0, 0.42f)
+                writeModalTap(980.0, 2.756, 0.14, 28.0, 55.0, 0.22f, 0.48f)
+            }
+            "liquid_morph" -> {
+                writeSilkyWhoosh(0.38, 190.0, 1400.0, 110.0, 0.42, 0.38f, 68.0, 0.48f)
+                writeModalTap(460.0, 1.5, 0.18, 22.0, 44.0, 0.26f, 0.46f)
+            }
+            "paper_slide", "page_flip" -> writeSilkyWhoosh(0.21, 900.0, 4200.0, 620.0, 0.32, 0.30f, 0.0, 0.22f)
+
+            // --- UI, TAPTIC & ORGANIC FOLEY ---
+            "taptic_thock", "pop" -> writeTapticImpulse(0.055, 190.0, 68.0, 72.0, 1400.0, 240.0, 0.32f, 0.14f)
+            "tactile_tick", "tick" -> writeTapticImpulse(0.028, 320.0, 120.0, 160.0, 3200.0, 900.0, 0.52f, 0.10f)
+            "click", "type_key" -> writeTapticImpulse(0.024, 260.0, 95.0, 185.0, 3800.0, 1100.0, 0.60f, 0.08f)
+            "glass_tap" -> writeModalTap(880.0, 2.756, 0.085, 42.0, 88.0, 0.46f, 0.30f)
+            "wood_tap" -> writeModalTap(420.0, 2.58, 0.075, 46.0, 96.0, 0.56f, 0.24f)
+            "snap" -> {
+                writeTapticImpulse(0.036, 420.0, 150.0, 130.0, 4600.0, 1400.0, 0.68f, 0.22f)
+                writeSilkyWhoosh(0.06, 800.0, 3400.0, 600.0, 0.20, 0.15f, 0.0, 0.18f)
+            }
+            "shutter", "camera_focus" -> {
+                writeTapticImpulse(0.025, 290.0, 110.0, 175.0, 4200.0, 1200.0, 0.65f, 0.12f)
+                val off = (0.056 * SAMPLE_RATE).toInt()
+                val n = (0.028 * SAMPLE_RATE).toInt()
+                val f = SilkyAirFilter()
+                for (i in 0 until n) {
+                    val t = i.toDouble() / SAMPLE_RATE
+                    val e = exp(-t * 165.0).toFloat()
+                    val s = (sin(TWO_PI * 240.0 * pitch * t).toFloat() * 0.35f + f.step(rng.nextWhite(), 3600.0, 950.0) * 0.65f) * e
+                    addStereo(dry, rev, totalFrames, start + off + i, s * gL, s * gR, 0.14f)
+                }
+            }
+            "water_drop", "bubble" -> {
+                // Authentic single Minnaert droplet (45ms crisp bubble cavity, ZERO splashing sink!)
+                val n = (0.065 * SAMPLE_RATE).toInt()
+                var ph = 0.0
+                val f0 = if (sfx == "bubble") 360.0 else 520.0
+                for (i in 0 until n) {
+                    val t = i.toDouble() / SAMPLE_RATE
+                    val att = min(1.0, t / 0.0025)
+                    val env = att * exp(-t * 54.0)
+                    val f = (f0 + f0 * 1.45 * (1.0 - exp(-t * 36.0))) * pitch
+                    ph += TWO_PI * f / SAMPLE_RATE
+                    val s = sin(ph).toFloat() * env.toFloat() * 0.56f
+                    addStereo(dry, rev, totalFrames, start + i, s * gL, s * gR, 0.45f)
+                }
+            }
+
+            // --- ACOUSTIC MUSICAL ACCENTS (KARPLUS-STRONG FELT & HARP) ---
+            "felt_pluck" -> writeAcousticPluck(doubleArrayOf(293.66), 0.72, 0.0, 0.24f, 0.9965f, 0.85f, 0.62f)
+            "kalimba_note" -> writeAcousticPluck(doubleArrayOf(440.0), 0.68, 0.0, 0.36f, 0.9958f, 0.78f, 0.58f)
+            "ding" -> writeAcousticPluck(doubleArrayOf(587.33, 880.0), 0.95, 0.014, 0.32f, 0.9972f, 0.62f, 0.74f)
+            "chime" -> writeAcousticPluck(doubleArrayOf(392.00, 493.88, 587.33, 739.99), 1.35, 0.032, 0.28f, 0.9978f, 0.58f, 0.84f)
+            "crystal_bloom", "bloom" -> {
+                // Warm Apple-style velvety Cmaj9 harp/pad swell (NEVER a church bell!)
+                writeAcousticPluck(doubleArrayOf(261.63, 329.63, 392.00, 493.88, 587.33), 1.50, 0.042, 0.22f, 0.9980f, 0.52f, 0.90f)
+                writeSilkyWhoosh(0.75, 180.0, 980.0, 120.0, 0.48, 0.22f, 0.0, 0.65f)
+            }
+            "glass_shimmer", "sparkle" -> writeAcousticPluck(doubleArrayOf(587.33, 739.99, 880.00, 1174.66), 1.15, 0.048, 0.35f, 0.9968f, 0.46f, 0.86f)
+
+            // --- CINEMA IMPACTS & RISERS ---
+            "cinema_boom", "sub_drop", "bass_hit", "thud" -> {
+                val dur = if (sfx == "thud") 0.34 else 1.05
+                val n = (dur * SAMPLE_RATE).toInt()
+                var ph = 0.0
+                val air = SilkyAirFilter()
+                for (i in 0 until n) {
+                    val t = i.toDouble() / SAMPLE_RATE
+                    val att = min(1.0, t / 0.007)
+                    val decay = if (sfx == "thud") 8.5 else 3.2
+                    val env = att * exp(-t * decay)
+                    val f = (36.0 + 68.0 * exp(-t * 16.0)) * pitch
+                    ph += TWO_PI * f / SAMPLE_RATE
+                    val punch = air.step(rng.nextPink(), 260.0 * exp(-t * 7.0) + 65.0, 32.0) * 0.42
+                    val sub = sin(ph) * 0.78 + sin(ph * 2.0) * 0.12
+                    val out = ((sub + punch) * env).toFloat()
+                    addStereo(dry, rev, totalFrames, start + i, out * gL, out * gR, 0.48f)
+                }
+            }
+            "riser" -> {
+                val n = (1.20 * SAMPLE_RATE).toInt()
+                val fL = SilkyAirFilter(); val fR = SilkyAirFilter()
+                var ph = 0.0
+                for (i in 0 until n) {
+                    val u = i.toDouble() / n
+                    val env = u.pow(2.2) * (if (u > 0.94) (1.0 - u) / 0.06 else 1.0)
+                    val lp = (200.0 + 2600.0 * u * u) * pitch
+                    val aL = fL.step(rng.nextPink(), lp, 120.0)
+                    val aR = fR.step(rng.nextPink(), lp * 1.04, 120.0)
+                    ph += TWO_PI * (98.0 + 196.0 * u * u) * pitch / SAMPLE_RATE
+                    val tone = sin(ph).toFloat() * 0.16f
+                    val e = env.toFloat()
+                    addStereo(dry, rev, totalFrames, start + i, (aL + tone) * e * gL, (aR + tone) * e * gR, 0.62f)
+                }
+            }
+            "tape_stop" -> {
+                val n = (0.44 * SAMPLE_RATE).toInt()
+                var ph = 0.0
+                for (i in 0 until n) {
+                    val u = i.toDouble() / n
+                    val f = (360.0 * (1.0 - u).pow(2.3) + 34.0) * pitch
+                    ph += TWO_PI * f / SAMPLE_RATE
+                    val env = (1.0 - u).pow(1.5).toFloat() * 0.48f
+                    val s = (sin(ph) + sin(ph * 2.0) * 0.16).toFloat() * env
+                    addStereo(dry, rev, totalFrames, start + i, s * gL, s * gR, 0.30f)
+                }
+            }
+            else -> writeTapticImpulse(0.055, 190.0, 68.0, 72.0, 1400.0, 240.0, 0.32f, 0.14f)
+        }
+    }
+
+    // =========================================================================
+    // EVOLVING MUSICAL AMBIENCE BEDS (10 BEDS — SMOOTH 4-CHORD PROGRESSIONS)
+    // =========================================================================
+    private fun renderAmbience(
+        dry: FloatArray,
+        rev: FloatArray,
+        totalFrames: Int,
+        durSec: Double,
+        type: String,
+        vol: Float,
+        rng: FastRng
+    ) {
+        val fadeIn = min(0.55, durSec * 0.16)
+        val fadeOut = min(0.80, durSec * 0.22)
+        val padLpL = SilkyAirFilter(); val padLpR = SilkyAirFilter()
+        val airL = SilkyAirFilter(); val airR = SilkyAirFilter()
+
+        // 4-chord progressions (each bar = 2.4s with smooth 0.55s overlap crossfade)
+        val prog: Array<DoubleArray> = when (type) {
+            "dark_cinema" -> arrayOf(
+                doubleArrayOf(55.00, 82.41, 110.00, 164.81),
+                doubleArrayOf(49.00, 73.42, 98.00, 146.83),
+                doubleArrayOf(43.65, 65.41, 87.31, 130.81),
+                doubleArrayOf(49.00, 73.42, 98.00, 164.81)
+            )
+            "lofi_garden" -> arrayOf(
+                doubleArrayOf(130.81, 164.81, 196.00, 246.94), // Cmaj7
+                doubleArrayOf(110.00, 164.81, 196.00, 261.63), // Am7
+                doubleArrayOf(87.31, 130.81, 164.81, 220.00),  // Fmaj7
+                doubleArrayOf(98.00, 146.83, 196.00, 246.94)   // G6
+            )
+            "documentary_pulse" -> arrayOf(
+                doubleArrayOf(146.83, 220.00, 293.66, 329.63), // Dsus2
+                doubleArrayOf(123.47, 185.00, 246.94, 293.66), // Bm7
+                doubleArrayOf(98.00, 146.83, 196.00, 246.94),  // Gmaj7
+                doubleArrayOf(110.00, 164.81, 220.00, 277.18)  // Aadd9
+            )
+            "ios_glass_chimes" -> arrayOf(
+                doubleArrayOf(196.00, 246.94, 293.66, 369.99), // Gmaj7
+                doubleArrayOf(164.81, 246.94, 293.66, 392.00), // Em7
+                doubleArrayOf(130.81, 196.00, 246.94, 293.66), // Cmaj9
+                doubleArrayOf(146.83, 220.00, 293.66, 369.99)  // Dmaj7
+            )
+            else -> arrayOf(
+                doubleArrayOf(130.81, 196.00, 246.94, 293.66), // Cmaj9
+                doubleArrayOf(110.00, 164.81, 246.94, 261.63), // Am9
+                doubleArrayOf(87.31, 130.81, 196.00, 220.00),  // Fmaj9
+                doubleArrayOf(98.00, 146.83, 196.00, 246.94)   // G6
+            )
+        }
+
+        val barSec = 2.4
+        var subPh = 0.0
+
+        // Optional gentle acoustic pulse notes for documentary_pulse / lofi_garden
+        if (type == "documentary_pulse" || type == "lofi_garden") {
+            val bpm = if (type == "documentary_pulse") 106.0 else 86.0
+            val stepSec = 60.0 / bpm / 2.0
+            var stepT = 0.15
+            var stepIdx = 0
+            while (stepT < durSec - 0.5) {
+                val bar = ((stepT / barSec).toInt()) % prog.size
+                val chord = prog[bar]
+                val noteHz = chord[stepIdx % chord.size] * (if (type == "documentary_pulse") 2.0 else 1.0)
+                val sf = (stepT * SAMPLE_RATE).toInt()
+                val noteRng = FastRng(stepIdx * 97 + type.hashCode())
+                val voice = KarplusVoice(noteHz, if (type == "documentary_pulse") 0.22f else 0.18f, 0.994f, noteRng)
+                val noteFrames = (0.38 * SAMPLE_RATE).toInt()
+                val noteGain = vol * (if (stepIdx % 2 == 0) 0.26f else 0.16f)
+                val panSide = if (stepIdx % 2 == 0) 0.85f else 1.15f
+                for (k in 0 until noteFrames) {
+                    val dt = k.toDouble() / SAMPLE_RATE
+                    val env = min(1.0, dt / 0.008) * exp(-dt * 6.5)
+                    val s = voice.step() * env.toFloat() * noteGain
+                    addStereo(dry, rev, totalFrames, sf + k, s * panSide, s * (2f - panSide), 0.52f)
+                }
+                stepT += stepSec
+                stepIdx++
+            }
+        }
+
+        for (i in 0 until totalFrames) {
+            val t = i.toDouble() / SAMPLE_RATE
+            val eIn = if (t < fadeIn) (t / fadeIn).pow(1.4) else 1.0
+            val eOut = if (t > durSec - fadeOut) max(0.0, (durSec - t) / fadeOut).pow(1.4) else 1.0
+            val env = (eIn * eOut).toFloat() * vol * 0.72f
+
+            val barFloat = t / barSec
+            val barIdx = barFloat.toInt() % prog.size
+            val nextIdx = (barIdx + 1) % prog.size
+            val barPos = barFloat - barFloat.toInt()
+            val xfade = if (barPos > 0.76) ((barPos - 0.76) / 0.24).coerceIn(0.0, 1.0) else 0.0
+            val wA = cos(xfade * PI * 0.5).toFloat()
+            val wB = sin(xfade * PI * 0.5).toFloat()
+
+            var l = 0f; var r = 0f
+            val cA = prog[barIdx]; val cB = prog[nextIdx]
+            for (k in cA.indices) {
+                val wk = 0.22f / (1f + k * 0.25f)
+                val fA = cA[k]; val fB = cB[k]
+                val sAL = (sin(TWO_PI * fA * t) + sin(TWO_PI * fA * 2.0 * t) * 0.12).toFloat()
+                val sAR = (sin(TWO_PI * fA * 1.0024 * t + 0.5) + sin(TWO_PI * fA * 2.0048 * t) * 0.12).toFloat()
+                val sBL = if (xfade > 0.001) (sin(TWO_PI * fB * t) + sin(TWO_PI * fB * 2.0 * t) * 0.12).toFloat() else 0f
+                val sBR = if (xfade > 0.001) (sin(TWO_PI * fB * 1.0024 * t + 0.5) + sin(TWO_PI * fB * 2.0048 * t) * 0.12).toFloat() else 0f
+                l += (sAL * wA + sBL * wB) * wk
+                r += (sAR * wA + sBR * wB) * wk
+            }
+
+            val cut = when (type) {
+                "dark_cinema" -> 260.0 + 110.0 * sin(TWO_PI * 0.12 * t)
+                "ios_glass_chimes" -> 1100.0 + 320.0 * sin(TWO_PI * 0.16 * t)
+                else -> 640.0 + 220.0 * sin(TWO_PI * 0.14 * t)
+            }
+            l = padLpL.step(l, cut, 40.0)
+            r = padLpR.step(r, cut, 40.0)
+
+            when (type) {
+                "botanical_air", "forest_air" -> {
+                    val br = 0.45f + 0.55f * sin(TWO_PI * 0.14 * t).toFloat()
+                    l += airL.step(rng.nextPink(), 540.0 + 240.0 * br, 160.0) * 0.20f * br
+                    r += airR.step(rng.nextPink(), 580.0 + 240.0 * br, 160.0) * 0.20f * br
+                }
+                "lofi_garden" -> {
+                    val dust = airL.step(rng.nextPink(), 2600.0, 900.0) * 0.035f
+                    l += dust; r += dust
+                }
+                "keynote_pulse", "apple_keynote_minimal", "minimal_pulse" -> {
+                    val bpm = if (type == "minimal_pulse") 108.0 else 112.0
+                    val pos = (t * bpm / 60.0) % 1.0
+                    val kEnv = exp(-pos * 13.0).toFloat()
+                    subPh += TWO_PI * (50.0 + 24.0 * exp(-pos * 28.0)) / SAMPLE_RATE
+                    val sub = sin(subPh).toFloat() * kEnv * 0.28f
+                    l = l * 0.74f + sub; r = r * 0.74f + sub
+                }
+                "dark_cinema" -> {
+                    subPh += TWO_PI * 41.2 / SAMPLE_RATE
+                    val sub = sin(subPh).toFloat() * 0.22f
+                    l += sub; r += sub
+                }
+            }
+            addStereo(dry, rev, totalFrames, i, l * env, r * env, 0.58f)
+        }
+    }
+
+    // =========================================================================
+    // WAV PARSER, EXTERNAL AUDIO DECODER & MASTERING BUS
+    // =========================================================================
     private fun parseWav(bytes: ByteArray): WavSample? {
         if (bytes.size < 44) return null
         fun str4(off: Int) = String(bytes, off, 4, Charsets.US_ASCII)
@@ -200,77 +660,91 @@ object ProceduralAudioEngine {
             ((bytes[off + 3].toInt() and 0xFF) shl 24)
         if (str4(0) != "RIFF" || str4(8) != "WAVE") return null
 
-        var channels = 2
-        var sampleRate = SAMPLE_RATE
-        var bits = 16
-        var dataOffset = -1
-        var dataSize = 0
-        var off = 12
+        var channels = 2; var sampleRate = SAMPLE_RATE; var bits = 16
+        var dataOffset = -1; var dataSize = 0; var off = 12
         while (off + 8 <= bytes.size) {
-            val id = str4(off)
-            val sz = u32(off + 4).coerceAtLeast(0)
-            val body = off + 8
+            val id = str4(off); val sz = u32(off + 4).coerceAtLeast(0); val body = off + 8
             if (body + sz > bytes.size && id != "data") break
             if (id == "fmt " && sz >= 16) {
                 channels = u16(body + 2).coerceIn(1, 2)
                 sampleRate = u32(body + 4).coerceIn(8000, 96000)
                 bits = u16(body + 14)
             } else if (id == "data") {
-                dataOffset = body
-                dataSize = min(sz, bytes.size - body)
-                break
+                dataOffset = body; dataSize = min(sz, bytes.size - body); break
             }
             off = body + ((sz + 1) and 1.inv())
         }
         if (dataOffset < 0 || dataSize < 4 || bits != 16) return null
-        val bytesPerFrame = channels * 2
-        val frames = dataSize / bytesPerFrame
+        val frames = dataSize / (channels * 2)
         val stereo = FloatArray(frames * 2)
         var p = dataOffset
         for (i in 0 until frames) {
-            val s0 = ((bytes[p].toInt() and 0xFF) or (bytes[p + 1].toInt() shl 8)).toShort() / 32768f
-            p += 2
+            val s0 = ((bytes[p].toInt() and 0xFF) or (bytes[p + 1].toInt() shl 8)).toShort() / 32768f; p += 2
             val s1 = if (channels == 2) {
-                val v = ((bytes[p].toInt() and 0xFF) or (bytes[p + 1].toInt() shl 8)).toShort() / 32768f
-                p += 2; v
+                val v = ((bytes[p].toInt() and 0xFF) or (bytes[p + 1].toInt() shl 8)).toShort() / 32768f; p += 2; v
             } else s0
-            stereo[i * 2] = s0
-            stereo[i * 2 + 1] = s1
+            stereo[i * 2] = s0; stereo[i * 2 + 1] = s1
         }
         return WavSample(sampleRate, frames, stereo)
     }
 
     private fun mixWavSample(
-        dry: FloatArray,
-        rev: FloatArray,
-        totalFrames: Int,
-        startFrame: Int,
-        wav: WavSample,
-        gain: Float,
-        pitch: Float,
-        pan: Float,
-        revSendAmt: Float
+        dry: FloatArray, rev: FloatArray, totalFrames: Int, startFrame: Int,
+        wav: WavSample, gain: Float, pitch: Float, pan: Float, revSendAmt: Float
     ) {
-        val gL = gain * (1f - max(0f, pan))
-        val gR = gain * (1f + min(0f, pan))
+        val gL = gain * (1f - max(0f, pan)); val gR = gain * (1f + min(0f, pan))
         val step = (wav.sampleRate.toDouble() / SAMPLE_RATE.toDouble()) * pitch.toDouble().coerceIn(0.4, 2.5)
-        var pos = 0.0
-        var outIdx = startFrame
-        val maxPos = (wav.frames - 1).toDouble()
+        var pos = 0.0; var outIdx = startFrame; val maxPos = (wav.frames - 1).toDouble()
         while (pos < maxPos && outIdx < totalFrames) {
-            val i0 = pos.toInt()
-            val frac = (pos - i0).toFloat()
-            val b0 = i0 * 2
-            val b1 = (i0 + 1) * 2
+            val i0 = pos.toInt(); val frac = (pos - i0).toFloat()
+            val b0 = i0 * 2; val b1 = (i0 + 1) * 2
             val l = (wav.stereo[b0] + (wav.stereo[b1] - wav.stereo[b0]) * frac) * gL
             val r = (wav.stereo[b0 + 1] + (wav.stereo[b1 + 1] - wav.stereo[b0 + 1]) * frac) * gR
             addStereo(dry, rev, totalFrames, outIdx, l, r, revSendAmt)
-            pos += step
-            outIdx++
+            pos += step; outIdx++
         }
     }
 
-    /** Streaming decoder for external MP3/WAV/M4A/OGG Voiceover or BGM -> 44.1kHz Stereo FloatArray */
+    /** Decodes any user audio file (MP3/WAV/M4A/OGG), trims silence & normalizes to 16-bit Stereo PCM */
+    fun decodeAudioUriToNormalizedPcm16(context: Context, uriString: String, maxSeconds: Double = 4.0): ByteArray? {
+        val maxFrames = (maxSeconds * SAMPLE_RATE).toInt()
+        val raw = decodeAudioUri(context, uriString, maxFrames) ?: return null
+        val total = raw.size / 2
+        var first = 0
+        while (first < total && max(abs(raw[first * 2]), abs(raw[first * 2 + 1])) < 0.008f) first++
+        var last = total - 1
+        while (last > first && max(abs(raw[last * 2]), abs(raw[last * 2 + 1])) < 0.004f) last--
+        val trimmedFrames = (last - first + 1).coerceAtLeast(1)
+        if (trimmedFrames < 400) return null
+
+        var peak = 0.001f
+        for (i in first..last) {
+            peak = max(peak, max(abs(raw[i * 2]), abs(raw[i * 2 + 1])))
+        }
+        val norm = (0.86f / peak).coerceAtMost(4.0f)
+        val fadeIn = min(220, trimmedFrames / 6)
+        val fadeOut = min(1100, trimmedFrames / 4)
+        val pcm = ByteArray(trimmedFrames * 4)
+        var bIdx = 0
+        for (k in 0 until trimmedFrames) {
+            val env = when {
+                k < fadeIn -> k.toFloat() / fadeIn
+                k > trimmedFrames - fadeOut -> (trimmedFrames - k).toFloat() / fadeOut
+                else -> 1f
+            }
+            val src = (first + k) * 2
+            val sL = (raw[src] * norm * env).coerceIn(-0.98f, 0.98f)
+            val sR = (raw[src + 1] * norm * env).coerceIn(-0.98f, 0.98f)
+            val vL = (sL * 32767f).toInt().toShort()
+            val vR = (sR * 32767f).toInt().toShort()
+            pcm[bIdx++] = (vL.toInt() and 0xFF).toByte()
+            pcm[bIdx++] = ((vL.toInt() shr 8) and 0xFF).toByte()
+            pcm[bIdx++] = (vR.toInt() and 0xFF).toByte()
+            pcm[bIdx++] = ((vR.toInt() shr 8) and 0xFF).toByte()
+        }
+        return pcm
+    }
+
     private fun decodeAudioUri(context: Context, uriString: String, totalFrames: Int): FloatArray? {
         val pfd = context.contentResolver.openFileDescriptor(Uri.parse(uriString), "r") ?: return null
         val outMix = FloatArray(totalFrames * CHANNELS)
@@ -279,14 +753,11 @@ object ProceduralAudioEngine {
             var codec: MediaCodec? = null
             try {
                 extractor.setDataSource(fd.fileDescriptor)
-                var audioTrack = -1
-                var format: MediaFormat? = null
+                var audioTrack = -1; var format: MediaFormat? = null
                 for (i in 0 until extractor.trackCount) {
                     val f = extractor.getTrackFormat(i)
                     val mime = f.getString(MediaFormat.KEY_MIME) ?: continue
-                    if (mime.startsWith("audio/")) {
-                        audioTrack = i; format = f; break
-                    }
+                    if (mime.startsWith("audio/")) { audioTrack = i; format = f; break }
                 }
                 if (audioTrack < 0 || format == null) return null
                 extractor.selectTrack(audioTrack)
@@ -295,18 +766,11 @@ object ProceduralAudioEngine {
                 var srcCh = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
 
                 val dec = MediaCodec.createDecoderByType(mime)
-                codec = dec
-                dec.configure(format, null, null, 0)
-                dec.start()
+                codec = dec; dec.configure(format, null, null, 0); dec.start()
 
                 val info = MediaCodec.BufferInfo()
-                var inputDone = false
-                var outputDone = false
-                var srcIdx = 0L
-                var dstIdx = 0
-                var readPos = 0.0
-                var prevL = 0f
-                var prevR = 0f
+                var inputDone = false; var outputDone = false
+                var srcIdx = 0L; var dstIdx = 0; var readPos = 0.0; var prevL = 0f; var prevR = 0f
 
                 while (!outputDone && dstIdx < totalFrames) {
                     if (!inputDone) {
@@ -333,8 +797,7 @@ object ProceduralAudioEngine {
                         outIdx >= 0 -> {
                             val outBuf = dec.getOutputBuffer(outIdx)
                             if (outBuf != null && info.size > 0) {
-                                outBuf.position(info.offset)
-                                outBuf.limit(info.offset + info.size)
+                                outBuf.position(info.offset); outBuf.limit(info.offset + info.size)
                                 val sb = outBuf.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
                                 val step = srcRate.toDouble() / SAMPLE_RATE.toDouble()
                                 val chCount = srcCh.coerceAtLeast(1)
@@ -343,15 +806,13 @@ object ProceduralAudioEngine {
                                     val cL = sb.get() / 32768f
                                     val cR = if (chCount >= 2) sb.get() / 32768f else cL
                                     for (skip in 2 until chCount) sb.get()
-                                    if (srcIdx == 0L) {
-                                        prevL = cL; prevR = cR
-                                    } else {
+                                    if (srcIdx == 0L) { prevL = cL; prevR = cR }
+                                    else {
                                         while (dstIdx < totalFrames && readPos <= srcIdx.toDouble()) {
                                             val frac = (readPos - (srcIdx - 1L)).toFloat().coerceIn(0f, 1f)
                                             outMix[dstIdx * 2] = prevL + (cL - prevL) * frac
                                             outMix[dstIdx * 2 + 1] = prevR + (cR - prevR) * frac
-                                            dstIdx++
-                                            readPos += step
+                                            dstIdx++; readPos += step
                                         }
                                         prevL = cL; prevR = cR
                                     }
@@ -374,21 +835,17 @@ object ProceduralAudioEngine {
     }
 
     private fun masterToPcm16(
-        dry: FloatArray,
-        revSend: FloatArray,
-        voiceover: FloatArray?,
-        totalFrames: Int,
-        voGain: Float,
-        edgeFade: Boolean
+        dry: FloatArray, revSend: FloatArray, voiceover: FloatArray?,
+        totalFrames: Int, voGain: Float, edgeFade: Boolean
     ): ByteArray {
-        val combsL = arrayOf(DampedComb(1557, 0.76f, 0.36f), DampedComb(1617, 0.75f, 0.38f), DampedComb(1491, 0.74f, 0.36f), DampedComb(1422, 0.73f, 0.40f))
-        val combsR = arrayOf(DampedComb(1580, 0.76f, 0.36f), DampedComb(1640, 0.75f, 0.38f), DampedComb(1514, 0.74f, 0.36f), DampedComb(1445, 0.73f, 0.40f))
+        val combsL = arrayOf(DampedComb(1557, 0.77f, 0.38f), DampedComb(1617, 0.76f, 0.40f), DampedComb(1491, 0.75f, 0.38f), DampedComb(1422, 0.74f, 0.42f))
+        val combsR = arrayOf(DampedComb(1580, 0.77f, 0.38f), DampedComb(1640, 0.76f, 0.40f), DampedComb(1514, 0.75f, 0.38f), DampedComb(1445, 0.74f, 0.42f))
         val apL1 = Allpass(225); val apL2 = Allpass(556)
         val apR1 = Allpass(248); val apR2 = Allpass(579)
 
         val pcm = ByteArray(totalFrames * CHANNELS * 2)
         val fadeInSamp = if (edgeFade) (0.018 * SAMPLE_RATE).toInt() else 1
-        val fadeOutSamp = if (edgeFade) (0.040 * SAMPLE_RATE).toInt() else 1
+        val fadeOutSamp = if (edgeFade) (0.045 * SAMPLE_RATE).toInt() else 1
         var dcL = 0f; var dcR = 0f; var prevInL = 0f; var prevInR = 0f
         var byteIdx = 0
 
@@ -397,8 +854,7 @@ object ProceduralAudioEngine {
             val inL = revSend[idx2]; val inR = revSend[idx2 + 1]
             var wetL = 0f; var wetR = 0f
             for (c in 0 until 4) {
-                wetL += combsL[c].process(inL)
-                wetR += combsR[c].process(inR)
+                wetL += combsL[c].process(inL); wetR += combsR[c].process(inR)
             }
             wetL = apL2.process(apL1.process(wetL * 0.25f))
             wetR = apR2.process(apR1.process(wetR * 0.25f))
@@ -411,8 +867,8 @@ object ProceduralAudioEngine {
             val voL = if (voiceover != null) voiceover[idx2] * voGain else 0f
             val voR = if (voiceover != null) voiceover[idx2 + 1] * voGain else 0f
 
-            val mixL = (dry[idx2] + wetL * 0.28f + voL) * env
-            val mixR = (dry[idx2 + 1] + wetR * 0.28f + voR) * env
+            val mixL = (dry[idx2] + wetL * 0.30f + voL) * env
+            val mixR = (dry[idx2 + 1] + wetR * 0.30f + voR) * env
             dcL = mixL - prevInL + 0.996f * dcL; prevInL = mixL
             dcR = mixR - prevInR + 0.996f * dcR; prevInR = mixR
 
@@ -426,83 +882,6 @@ object ProceduralAudioEngine {
             pcm[byteIdx++] = ((sR.toInt() shr 8) and 0xFF).toByte()
         }
         return pcm
-    }
-
-    private fun addStereo(dry: FloatArray, rev: FloatArray, totalFrames: Int, frameIdx: Int, l: Float, r: Float, send: Float) {
-        if (frameIdx < 0 || frameIdx >= totalFrames) return
-        val base = frameIdx * CHANNELS
-        dry[base] += l; dry[base + 1] += r
-        if (send > 0.001f) { rev[base] += l * send; rev[base + 1] += r * send }
-    }
-
-    private fun warmWave(phase: Double): Float = (sin(phase) + sin(phase * 2.0) * 0.14 + sin(phase * 3.0) * 0.03).toFloat()
-
-    private fun renderAmbience(dry: FloatArray, rev: FloatArray, totalFrames: Int, durSec: Double, type: String, vol: Float, rng: FastRng) {
-        val fadeIn = min(0.60, durSec * 0.18)
-        val fadeOut = min(0.85, durSec * 0.24)
-        val svfL = SvFilter(); val svfR = SvFilter(); val airL = SvFilter(); val airR = SvFilter()
-        val chord = when (type) {
-            "dark_cinema" -> doubleArrayOf(55.00, 82.41, 110.00, 164.81)
-            "forest_air", "botanical_air" -> doubleArrayOf(130.81, 196.00, 246.94, 293.66, 329.63)
-            "keynote_pulse", "apple_keynote_minimal" -> doubleArrayOf(146.83, 220.00, 277.18, 329.63)
-            "ios_glass_chimes" -> doubleArrayOf(196.00, 246.94, 293.66, 369.99, 440.00)
-            else -> doubleArrayOf(130.81, 164.81, 196.00, 246.94)
-        }
-        val phL = DoubleArray(chord.size); val phR = DoubleArray(chord.size); var subPh = 0.0
-        for (i in 0 until totalFrames) {
-            val t = i.toDouble() / SAMPLE_RATE
-            val eIn = if (t < fadeIn) (t / fadeIn).pow(1.4) else 1.0
-            val eOut = if (t > durSec - fadeOut) max(0.0, (durSec - t) / fadeOut).pow(1.4) else 1.0
-            val env = (eIn * eOut).toFloat() * vol * 0.80f
-            var l = 0f; var r = 0f
-            val swell = 0.65f + 0.35f * sin(TWO_PI * 0.16 * t).toFloat()
-            for (k in chord.indices) {
-                phL[k] += TWO_PI * chord[k] / SAMPLE_RATE
-                phR[k] += TWO_PI * chord[k] * (1.0026 + k * 0.0004) / SAMPLE_RATE
-                val w = (0.19f / (1f + k * 0.28f)) * swell
-                l += warmWave(phL[k]) * w; r += warmWave(phR[k]) * w
-            }
-            val cut = if (type == "dark_cinema") 260.0 + 120.0 * sin(TWO_PI * 0.11 * t) else 640.0 + 240.0 * sin(TWO_PI * 0.15 * t)
-            svfL.step(l, cut, 0.95f); svfR.step(r, cut, 0.95f)
-            l = svfL.low; r = svfR.low
-            when (type) {
-                "botanical_air", "forest_air" -> {
-                    val br = 0.45f + 0.55f * sin(TWO_PI * 0.14 * t).toFloat()
-                    airL.step(rng.nextPink(), 460.0 + 240.0 * br, 0.85f)
-                    airR.step(rng.nextPink(), 490.0 + 240.0 * br, 0.85f)
-                    l += airL.band * 0.16f * br; r += airR.band * 0.16f * br
-                }
-                "keynote_pulse", "apple_keynote_minimal", "minimal_pulse" -> {
-                    val bpm = if (type == "minimal_pulse") 108.0 else 112.0
-                    val pos = (t * bpm / 60.0) % 1.0
-                    val kEnv = exp(-pos * 12.0).toFloat()
-                    subPh += TWO_PI * (52.0 + 26.0 * exp(-pos * 26.0)) / SAMPLE_RATE
-                    val sub = sin(subPh).toFloat() * kEnv * 0.32f
-                    l = l * 0.72f + sub; r = r * 0.72f + sub
-                }
-                "dark_cinema" -> {
-                    subPh += TWO_PI * 41.2 / SAMPLE_RATE
-                    val sub = sin(subPh).toFloat() * 0.22f * swell
-                    l += sub; r += sub
-                }
-            }
-            addStereo(dry, rev, totalFrames, i, l * env, r * env, 0.55f)
-        }
-    }
-
-    /** Clean fallback DSP only if a specific WAV asset is missing */
-    private fun renderFallbackSfx(dry: FloatArray, rev: FloatArray, totalFrames: Int, start: Int, sfx: String, gain: Float, pitch: Float, pan: Float, rng: FastRng) {
-        val gL = gain * (1f - max(0f, pan)); val gR = gain * (1f + min(0f, pan))
-        val dur = if (sfx.contains("whoosh") || sfx.contains("whip") || sfx.contains("slide")) 0.40 else 0.28
-        val n = (dur * SAMPLE_RATE).toInt()
-        val svf = SvFilter()
-        for (i in 0 until n) {
-            val u = i.toDouble() / n
-            val env = sin(u * PI).pow(1.6).toFloat()
-            svf.step(rng.nextPink(), (240.0 + 1400.0 * sin(u * PI)) * pitch, 0.75f)
-            val s = svf.band * env * 0.85f
-            addStereo(dry, rev, totalFrames, start + i, s * gL, s * gR, 0.35f)
-        }
     }
 
     private fun encodePcmToAac(pcm: ByteArray): EncodedAudioTrack {

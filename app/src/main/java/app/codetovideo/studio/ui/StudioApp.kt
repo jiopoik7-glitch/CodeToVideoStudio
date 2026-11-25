@@ -996,7 +996,7 @@ fun StudioApp(activity: MainActivity) {
                                 onPickVoiceover = { pickVoiceover.launch(arrayOf("audio/*")) },
                                 onPreview = { activity.canvasRuntime.preview(project, it) },
                                 onRender = {
-                                    renderMessage = "Memuat 32 Real SFX & Voiceover, menyiapkan encoder MP4…"
+                                    renderMessage = "Memuat 36 Studio SFX & Voiceover, menyiapkan encoder MP4…"
                                     isRendering = true
                                     renderDone = 0
                                     renderTotal = project.renderSettings.totalFrames()
@@ -1064,7 +1064,7 @@ fun StudioApp(activity: MainActivity) {
                                 onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
                                 onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
                             )
-                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v0.6.md") })
+                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v0.7.md") })
                         }
                     }
                 }
@@ -1166,7 +1166,7 @@ private fun TopGlassHeader(
             ) {
                 Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
                 Spacer(Modifier.width(5.dp))
-                Text("v0.6.2", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("v0.7", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
@@ -1196,43 +1196,13 @@ private fun SectionHeader(title: String, subtitle: String, pal: GlassPalette) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SfxAuditionDialog(
     activity: MainActivity,
     pal: GlassPalette,
     onDismiss: () -> Unit
 ) {
-    val haptic = LocalHapticFeedback.current
-    val sfxList = listOf(
-        "air_whoosh", "whip", "glass_slide", "swoosh_soft", "swoosh_deep", "liquid_morph", "page_flip",
-        "glass_tap", "tactile_tick", "click", "snap", "shutter", "camera_focus", "type_key",
-        "pop", "bubble", "water_drop", "felt_pluck",
-        "chime", "crystal_bloom", "glass_shimmer", "sparkle", "ding",
-        "cinema_boom", "sub_drop", "bass_hit", "thud", "riser", "tape_stop"
-    )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = pal.dialogBg,
-        title = { Text("Tes Dengar SFX Studio Asli", color = pal.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
-        text = {
-            Column(
-                modifier = Modifier.height(320.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text("Ketuk nama SFX untuk langsung mendengar sampel WAV studio:", color = pal.textSecondary, fontSize = 11.sp)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    sfxList.forEach { sfx ->
-                        GlassMiniPill("▶ $sfx", pal) {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            AudioAuditionPlayer.play(activity, sfx)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Tutup", color = pal.iosBlue) } }
-    )
+    SfxStudioManagerDialog(activity = activity, isLight = pal.isLight, onDismiss = onDismiss)
 }
 
 @Composable
@@ -1250,7 +1220,7 @@ private fun EditorScreen(
     var showAudition by remember { mutableStateOf(false) }
 
     PageColumn {
-        SectionHeader("Editor Pro", "Engine v0.6 · 32 Real Studio SFX, Live Render & Voiceover.", pal)
+        SectionHeader("Editor Pro", "Engine v0.6 · 36 Studio Acoustic SFX, Live Render & Voiceover.", pal)
         GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Column(Modifier.weight(1f)) {
@@ -1317,7 +1287,7 @@ private fun EditorScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("REAL STUDIO SFX READY", color = pal.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.8.sp)
                         Spacer(Modifier.weight(1f))
-                        GlassMiniPill("▶ Tes SFX", pal) { showAudition = true }
+                        GlassMiniPill("▶ Studio SFX", pal) { showAudition = true }
                     }
                     Text(
                         "Bed: ${metadata.audio.ambience} · ${metadata.audio.cues.size} cues WAV asli sinkron otomatis ke AAC MP4.",
@@ -1566,7 +1536,7 @@ private fun RenderScreen(
                         color = if (hasAudioInCode) pal.iosGreen else pal.textMuted, fontSize = 10.sp
                     )
                 }
-                GlassMiniPill("▶ Tes SFX", pal) { showAudition = true }
+                GlassMiniPill("▶ Studio SFX", pal) { showAudition = true }
                 Spacer(Modifier.width(8.dp))
                 LiquidGlassSwitch(
                     checked = project.renderSettings.includeAudio,
@@ -1657,6 +1627,15 @@ private fun RenderScreen(
                             onCheckedChange = { onProjectChange(project.copy(renderSettings = project.renderSettings.copy(autoDucking = it))) }
                         )
                     }
+                }
+                val detectedCues = parsedMeta?.audio?.cues.orEmpty()
+                if (detectedCues.isNotEmpty()) {
+                    AudioCueTimelineStrip(
+                        activity = activity,
+                        cues = detectedCues,
+                        durationSeconds = project.renderSettings.durationSeconds,
+                        isLight = pal.isLight
+                    )
                 }
             }
         }
@@ -1853,11 +1832,11 @@ private fun DocsScreen(activity: MainActivity, pal: GlassPalette, onSave: () -> 
     val content = remember { activity.assets.open("docs/skill.md").bufferedReader().use { it.readText() } }
     val clipboard = LocalClipboardManager.current
     PageColumn {
-        SectionHeader("Docs v0.6", "Kitab Motion Director, Real Studio SFX & Live Engine.", pal)
+        SectionHeader("Docs v0.7", "Kitab Motion Director, Real Studio SFX & Live Engine.", pal)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GlassPrimaryButton("Salin Docs", pal, onClick = {
                 clipboard.setText(AnnotatedString(content))
-                Toast.makeText(activity, "Docs v0.6 disalin", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Docs v0.7 disalin", Toast.LENGTH_SHORT).show()
             }, modifier = Modifier.weight(1f))
             GlassSecondaryButton("Unduh .md", pal, onClick = onSave, modifier = Modifier.weight(1f))
         }
