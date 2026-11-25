@@ -209,7 +209,7 @@ function attachActorBuilders(g3dObj, tSec) {
       torso.sphere([s * 0.14, 0.11, 0.208], 0.028, { color: "#F5C242", material: "brushed_metal", metalness: 0.88, roughness: 0.20 }, 12);
     });
     if (c.apron) {
-      torso.roundBox([0, -0.08, 0.205], [0.38, 0.32, 0.03], 0.02, [0, 0, 0], mkMat(c.apronColor || "#E4AE48", { material: "fabric" }), 12);
+      torso.roundBox([0, -0.07, 0.192], [0.36, 0.26, 0.04], 0.025, [0, 0, 0], mkMat(c.apronColor || "#E4AE48", { material: "fabric" }), 12);
     }
     if (c.backpack !== false) {
       torso.roundBox([0, 0.04 + secLag * 0.3, -0.24], [0.36, 0.38, 0.16], 0.07, [secLag * 0.5, 0, 0], mkMat("#C6643A", { roughness: 0.62 }));
@@ -241,7 +241,7 @@ function attachActorBuilders(g3dObj, tSec) {
 
     // Mouth with Auto Lip-Sync or Expression
     if (talkOpen > 0.08) {
-      head.ellipsoid([0, -0.13, 0.305], [0.058, 0.022 + talkOpen * 0.048, 0.038], [0.1, 0, 0], { color: "#A82B3D", roughness: 0.38 }, 14);
+      head.ellipsoid([0, -0.122, 0.308], [0.068, 0.016 + talkOpen * 0.028, 0.028], [0.12, 0, 0], { color: "#C24052", roughness: 0.38 }, 14);
     } else if (expr === "joy") {
       head.ellipsoid([0, -0.13, 0.30], [0.074, 0.052, 0.042], [0.15, 0, 0], { color: "#B83244", roughness: 0.38 }, 14);
     } else if (expr === "wow") {
@@ -258,7 +258,7 @@ function attachActorBuilders(g3dObj, tSec) {
     [-1, 1].forEach((s) => {
       const isWink = (expr === "wink" && s > 0);
       const eyeOpenY = isWink ? 0.10 : lerpNum(1.0, 0.08, clampNum(blink, 0, 1));
-      const ex = s * 0.135, ey = 0.045, ez = 0.295;
+      const ex = s * 0.128, ey = 0.038, ez = 0.282;
       head.ellipsoid([ex, ey, ez], [0.074, 0.084 * eyeOpenY, 0.044], [0, s * 0.22, 0], { color: "#FFFFFF", roughness: 0.08 }, 18);
       if (eyeOpenY > 0.25) {
         head.ellipsoid([ex + s * 0.008, ey, ez + 0.027], [0.048, 0.058 * eyeOpenY, 0.028], [0, s * 0.22, 0], { color: eyeCol, roughness: 0.06 }, 16);
@@ -277,6 +277,9 @@ function attachActorBuilders(g3dObj, tSec) {
     // Hair & Headgear Styles ("hat" | "sprout" | "bob" | "spiky" | "bun" | "curly")
     const hairStyle = c.hairStyle || (c.hat === false ? "sprout" : "hat");
     head.ellipsoid([0, 0.13, -0.04], [0.37, 0.26, 0.36], [-0.15, 0, 0], mkMat(hair, { roughness: 0.78 }), 24);
+    head.ellipsoid([-0.14, 0.21, 0.24], [0.16, 0.09, 0.12], [0.22, -0.25, 0.22], mkMat(hair, { roughness: 0.78 }), 16);
+    head.ellipsoid([ 0.12, 0.22, 0.24], [0.17, 0.09, 0.12], [0.22,  0.22, -0.20], mkMat(hair, { roughness: 0.78 }), 16);
+    head.ellipsoid([ 0.00, 0.24, 0.27], [0.14, 0.08, 0.10], [0.28,  0.00,  0.00], mkMat(hair, { roughness: 0.78 }), 14);
     if (hairStyle === "bun") {
       head.sphere([0, 0.38, -0.14], 0.16, mkMat(hair, { roughness: 0.78 }), 18);
     } else if (hairStyle === "spiky") {
@@ -295,7 +298,7 @@ function attachActorBuilders(g3dObj, tSec) {
       const hatNode = head.node({ pos: [0, 0.26, -0.02], rot: [-0.12 + secLag * 0.6, 0, 0] });
       hatNode.cylinder([0, 0, 0], 0.56, 0.52, 0.036, [0, 0, 0], mkMat(hatCol, { material: matStyle === "toon" ? "toon" : "fabric" }), 32);
       hatNode.ellipsoid([0, 0.06, 0], [0.33, 0.18, 0.33], [0, 0, 0], mkMat(hatCol, { material: matStyle === "toon" ? "toon" : "fabric" }), 26);
-      hatNode.torus([0, 0.025, 0], 0.335, 0.022, [Math.PI * 0.5, 0, 0], mkMat(overalls), 32, 10);
+      hatNode.torus([0, 0.032, 0], 0.328, 0.024, [0, 0, 0], mkMat(overalls), 32, 10);
     }
 
     return { root, hips, torso, head, leftHand, rightHand };

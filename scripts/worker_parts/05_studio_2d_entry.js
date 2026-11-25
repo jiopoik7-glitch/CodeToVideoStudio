@@ -272,8 +272,10 @@ function makeUiApi(S) {
         c.font = "500 " + Math.round(18 * S) + "px sans-serif";
         const w2 = sub ? c.measureText(String(sub)).width : 0;
         const cw = Math.max(w1, w2) + 42 * S, ch = sub ? 78 * S : 52 * S;
-        const cx = dx >= 0 ? bx + 8 * S : bx - cw - 8 * S;
-        const cy = by - ch * 0.5;
+        const padC = 28 * S;
+        const rawCx = dx >= 0 ? bx + 8 * S : bx - cw - 8 * S;
+        const cx = clampNum(rawCx, padC, c.canvas.width - padC - cw);
+        const cy = clampNum(by - ch * 0.5, padC, c.canvas.height - padC - ch);
         c.globalAlpha *= cardK;
         drawGlassBase(c, cx, cy, cw, ch, 16 * S, { light, chromatic: true });
         c.fillStyle = light ? "#0E141D" : "#FFFFFF";

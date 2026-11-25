@@ -121,7 +121,7 @@ if (p > 0.32 && p < 0.70) {
   canGrip.cylinder([0, 0.11, 0.21], 0.024, 0.042, 0.30, [0.95, 0, 0], { color: "#1C8CD8", roughness: 0.28 }, 14);
   canGrip.sphere([0, 0.21, 0.34], 0.052, { color: "#F5C242", material: "brushed_metal", metalness: 0.78 }, 14);
   if (p > 0.39 && p < 0.64) {
-    sc.fx3d("water_stream", { from: [0.22, 0.92, 0.16], to: [0.68, 0.52, -0.04], count: 14, arc: 0.12 });
+    sc.fx3d("water_stream", { from: [0.02, 0.74, 0.24], to: [0.68, 0.54, -0.04], count: 14, arc: 0.16 });
   }
 }
 
@@ -148,7 +148,7 @@ sc.render(ctx);
 if (p > 0.72) {
   const roseScreen = sc.project([0.70, 1.32, -0.04]);
   ui.drawCallout(ctx, roseScreen, "Mekar Penuh!", "100% VITALITAS", {
-    dx: -170, dy: -115, color: roseCol, light: true, prog: ui.seg(p, 0.72, 0.84)
+    dx: -35, dy: -165, color: roseCol, light: true, prog: ui.seg(p, 0.72, 0.84)
   });
 }
 
@@ -366,7 +366,7 @@ if (p > 0.34 && p < 0.70) {
     c2.fillStyle = "#14241A"; c2.font = "700 42px sans-serif";
     c2.fillText("100% ALAMI", tw * 0.5, th * 0.58);
   }, 256);
-  stage.bottle3D([0.0, 0.55 + Math.sin(t * 5) * 0.04, 0.85], [0.1, 0.85, -0.35], {
+  stage.bottle3D([0.0, 0.55 + Math.sin(t * 5) * 0.04, 0.85], [0.1, 0.20, -0.35], {
     scale: 0.48 * Math.max(0.01, spIn), color: "#1B8E4E", color2: "#4CE088", label: lblTex
   });
   if (p > 0.42 && p < 0.62) {
@@ -464,7 +464,7 @@ const distK = isWide ? 1.0 : 1.28;
 sc.cameraRig(p, [
   { p: 0.00, az: -0.62, elev: 0.16, dist: 5.8 * distK, target: [0, 0.2, 0] },
   { p: 0.45, az:  0.38, elev: 0.12, dist: 4.8 * distK, target: [0, 0.2, 0] },
-  { p: 0.78, az:  2.75, elev: 0.18, dist: 5.2 * distK, target: [0, 0.2, 0] },
+  { p: 0.78, az: -0.42, elev: 0.24, dist: 5.4 * distK, target: [0, 0.15, 0] },
   { p: 1.00, az:  0.15, elev: 0.10, dist: 5.0 * distK, target: [0, 0.2, 0] }
 ]);
 
@@ -480,7 +480,7 @@ sc.torus([0, 0.22 + floatY, 0], 1.78, 0.025, [0.58 + t * 0.3, t * 0.4, 0.2], {
   color: "#E8F0FA", material: "hologram", roughness: 0.10, rim: 0.9
 }, 48, 14);
 sc.text3D(String(P.brand || "STUDIO"), [0, -1.32, 0.2], [-0.15, 0, 0], {
-  size: 0.36, color: "#E8F0FA", color2: accent, material: "brushed_metal"
+  size: isWide ? 0.36 : 0.24, color: "#E8F0FA", color2: accent, material: "brushed_metal"
 });
 sc.fx3d("dust", { count: 16, radius: 3.0, color: accent });
 sc.render(ctx);
@@ -488,7 +488,7 @@ sc.render(ctx);
 // 3D-Tracked Apple Keynote Hardware Callouts!
 if (p > 0.14 && p < 0.60) {
   const topEdge = sc.project([0.55, 1.15 + floatY, 0.05]);
-  ui.drawCallout(ctx, topEdge, "Brushed Titanium", "PBR METAL + HDRI", { dx: 120, dy: -100, color: accent, light: false, prog: ui.seg(p, 0.14, 0.26) });
+  ui.drawCallout(ctx, topEdge, "Brushed Titanium", "PBR METAL + HDRI", { dx: 60, dy: -135, color: accent, light: false, prog: ui.seg(p, 0.14, 0.26) });
 }
 if (p > 0.42 && p < 0.88) {
   const screenCtr = sc.project([-0.45, 0.15 + floatY, 0.08]);
@@ -547,8 +547,9 @@ const glsl = [
   "  ));",
   "}",
   "vec4 renderShader(vec2 uv) {",
-  "  vec3 ro = vec3(0.0, 0.0, 3.1);",
-  "  vec3 rd = normalize(vec3(uv, -1.45));",
+  "  float aspect = uRes.x / max(1.0, uRes.y);",
+  "  vec3 ro = vec3(0.0, 0.0, aspect < 0.85 ? 4.4 : 3.2);",
+  "  vec3 rd = normalize(vec3(uv, -1.65));",
   "  vec3 bg = mix(vec3(0.03, 0.05, 0.09), uAccent * 0.28, smoothstep(-0.6, 0.8, uv.y));",
   "  bg += uAccent * 0.18 * exp(-length(uv - vec2(0.32, 0.25)) * 2.8);",
   "  float dist = 0.0; bool hit = false;",
@@ -567,7 +568,8 @@ const glsl = [
   "  float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);",
   "  float spec = pow(max(dot(N, normalize(L + V)), 0.0), 48.0);",
   "  vec3 irid = cosPalette(fres * 0.85 + uTime * 0.15, vec3(0.55), vec3(0.45), vec3(1.0), vec3(0.0, 0.22, 0.45));",
-  "  vec3 col = mix(bg * 1.4, irid, 0.45 + 0.5 * fres) + vec3(1.0) * spec * 1.35 + uAccent * fres * 0.65;",
+  "  vec3 refl = cosPalette(dot(reflect(rd, N), vec3(0.3, 0.7, 0.4)) * 0.5 + 0.5 + uTime * 0.12, vec3(0.28,0.34,0.46), vec3(0.35,0.42,0.52), vec3(1.0), vec3(0.05, 0.18, 0.36));",
+  "  vec3 col = mix(bg * 0.9 + refl * 0.85, irid, 0.32 + 0.58 * fres) + vec3(1.0) * spec * 1.55 + uAccent * fres * 0.72;",
   "  col = col / (1.0 + col * 0.35);",
   "  return vec4(clamp(col, 0.0, 1.0), 1.0);",
   "}"

@@ -92,7 +92,7 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
           torus(pos, R, r, rot, mat, segsU, segsV) { pushMesh(buildTorusGeo(R || 1, r || 0.22, segsU, segsV), pos, rot, 1, mat); return nodeApi; },
           plane(pos, w, h, rot, mat) { pushMesh(buildBoxGeo(w || 2, 0.02, h || 2), pos, rot, 1, mat); return nodeApi; },
           shadow(pos, rx, rz, alpha) {
-            pushMesh(buildEllipsoidGeo(rx || 0.65, 0.015, rz || 0.65, 28), pos, [0, 0, 0], 1, {
+            pushMesh(buildShadowDiscGeo(rx || 0.65, rz || 0.65, 32), pos, [0, 0, 0], 1, {
               color: "#09100C", featherShadow: true, castShadow: false, alpha: alpha !== undefined ? alpha : 0.34
             });
             return nodeApi;

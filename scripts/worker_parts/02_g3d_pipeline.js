@@ -210,9 +210,9 @@ void main() {
   }
 
   if (uFeatherShadow > 0.5) {
-    vec3 N0 = normalize(vNorm);
-    float rDist = length(N0.xz);
-    float falloff = pow(clamp(1.0 - rDist * 1.12, 0.0, 1.0), 2.1);
+    float rDist = length(vUv * 2.0 - 1.0);
+    float falloff = smoothstep(1.0, 0.05, rDist);
+    falloff = falloff * falloff;
     float aS = clamp(alphaOut * falloff, 0.0, 1.0);
     gl_FragColor = vec4(srgbBase * aS, aS);
     return;
@@ -300,7 +300,7 @@ void main() {
   }
 
   float shadowVis = calcShadow(N, L1);
-  vec3 shadowTint = mix(pow(max(uShadowColor, vec3(0.02)), vec3(2.2)), vec3(1.0), shadowVis);
+  vec3 shadowTint = mix(pow(max(uShadowColor, vec3(0.18)), vec3(1.8)) * 0.72 + vec3(0.18), vec3(1.0), shadowVis);
   float ndl1 = max(dot(N, L1), 0.0);
   float ndl2 = max(dot(N, L2), 0.0);
   float ndv = max(dot(N, V), 0.0);
@@ -345,7 +345,7 @@ void main() {
     // 3-BAND STUDIO GHIBLI / SPIDER-VERSE TOON CEL SHADER
     float litVal = ndl1 * (0.35 + 0.65 * shadowVis);
     float band = litVal > 0.58 ? 1.0 : (litVal > 0.18 ? 0.66 : 0.36);
-    vec3 toonShade = mix(pow(max(uShadowColor, vec3(0.1)), vec3(2.2)) * 1.4, keyLin, band);
+    vec3 toonShade = mix(pow(max(uShadowColor, vec3(0.22)), vec3(1.8)) * 0.95 + vec3(0.16), keyLin * 1.08, band);
     float toonSpec = smoothstep(0.86, 0.91, dot(N, normalize(L1 + V))) * shadowVis * (1.0 - rough) * 0.48;
     float toonRim = smoothstep(0.58, 0.72, 1.0 - ndv) * max(dot(N, L1) + 0.4, 0.0) * uRimPow * 0.55;
     col = baseCol * (toonShade + dynDiff * 0.7 + fillLin * ndl2 * 0.22 + vec3(uAmb * 0.45)) + vec3(toonSpec) + pow(max(uRimColor, vec3(0.0)), vec3(2.2)) * toonRim;
@@ -365,7 +365,7 @@ void main() {
 
     vec3 F0 = mix(vec3(0.035), baseCol, metal);
     vec3 F = F0 + (vec3(1.0) - F0) * fresnel;
-    vec3 hemi = mix(vec3(0.24, 0.20, 0.17), vec3(0.58, 0.72, 0.92), N.y * 0.5 + 0.5) * uAmb;
+    vec3 hemi = mix(vec3(0.38, 0.34, 0.28), vec3(0.84, 0.92, 1.0), N.y * 0.5 + 0.5) * max(uAmb, 0.34);
 
     vec3 diff = baseCol * (1.0 - metal * 0.86) * (hemi + keyLin * ndl1 * shadowTint * 1.18 + fillLin * ndl2 * 0.40 + dynDiff);
     vec3 specCol = mix(vec3(1.0), baseCol, metal) * (spec1 * keyLin * shadowVis * (0.12 + 0.88 * metal + (1.0 - rough) * 0.25) + dynSpec);

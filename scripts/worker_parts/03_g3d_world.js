@@ -61,7 +61,7 @@ function buildEllipsoidGeo(rx, ry, rz, segs) {
     }
   }
   const st = s + 1;
-  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, a + 1, b, a + 1, b + 1, b); }
   return { pos, norm, uv, idx };
 }
 
@@ -81,6 +81,19 @@ function buildBoxGeo(w, h, d) {
     for (let k = 1; k <= 4; k++) { pos.push(fc[k][0], fc[k][1], fc[k][2]); norm.push(n[0], n[1], n[2]); }
     uv.push(0, 0, 1, 0, 1, 1, 0, 1); idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
+  return { pos, norm, uv, idx };
+}
+
+function buildShadowDiscGeo(rx, rz, segs) {
+  const s = clampNum(segs || 32, 12, 48);
+  const pos = [0, 0, 0], norm = [0, 1, 0], uv = [0.5, 0.5], idx = [];
+  for (let i = 0; i <= s; i++) {
+    const a = (i / s) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+    pos.push(ca * rx, 0, sa * rz);
+    norm.push(0, 1, 0);
+    uv.push(0.5 + ca * 0.5, 0.5 + sa * 0.5);
+  }
+  for (let i = 1; i <= s; i++) idx.push(0, i + 1, i);
   return { pos, norm, uv, idx };
 }
 
@@ -108,7 +121,7 @@ function buildRoundBoxGeo(w, h, d, rad, segs) {
     }
   }
   const st = s + 1;
-  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, a + 1, b, a + 1, b + 1, b); }
   return { pos, norm, uv, idx };
 }
 
@@ -122,11 +135,11 @@ function buildLatheGeo(profile, segs) {
     const v = j / Math.max(1, m - 1);
     for (let i = 0; i <= s; i++) {
       const u = i / s, a = u * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
-      pos.push(ca * pCur[0], pCur[1], sa * pCur[0]); norm.push(ca * nr, ny, sa * nr); uv.push(u, v);
+      pos.push(ca * pCur[0], pCur[1], sa * pCur[0]); norm.push(ca * nr, ny, sa * nr); uv.push(1 - u, v);
     }
   }
   const st = s + 1;
-  for (let j = 0; j < m - 1; j++) for (let i = 0; i < s; i++) { const a = j * st + i, b = a + st; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+  for (let j = 0; j < m - 1; j++) for (let i = 0; i < s; i++) { const a = j * st + i, b = a + st; idx.push(a, b, a + 1, b, b + 1, a + 1); }
   return { pos, norm, uv, idx };
 }
 
@@ -392,7 +405,7 @@ function attachWorldHelpers(nodeApi, tSec, randFn) {
         const a = i * golden, rad = (type === "sakura" ? 0.05 : lerpNum(0.02, 0.20, Math.pow(lay, 0.9))) * grow;
         const pW = (type === "sakura" ? 0.24 : lerpNum(0.14, 0.36, lay)) * grow;
         const pH = (type === "sakura" ? 0.32 : lerpNum(0.22, 0.46, lay)) * grow;
-        const pitch = type === "sakura" ? lerpNum(0.3, 1.25, pb) : lerpNum(0.12, 0.24 + 0.70 * lay, pb);
+        const pitch = type === "sakura" ? lerpNum(0.3, 1.15, pb) : lerpNum(0.08, 0.14 + 0.56 * Math.pow(lay, 1.25), pb);
         head.petal([Math.sin(a) * rad, (1 - lay) * 0.10 * grow, Math.cos(a) * rad], [pitch, a, 0], pW, pH, 0.06, 0.08 * pb, {
           color: (type === "rose" && lay < 0.4) ? "#6B0D22" : col, color2: col2, roughness: 0.36, sss: 0.48
         });

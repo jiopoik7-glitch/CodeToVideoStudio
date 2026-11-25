@@ -469,9 +469,9 @@ void main() {
   }
 
   if (uFeatherShadow > 0.5) {
-    vec3 N0 = normalize(vNorm);
-    float rDist = length(N0.xz);
-    float falloff = pow(clamp(1.0 - rDist * 1.12, 0.0, 1.0), 2.1);
+    float rDist = length(vUv * 2.0 - 1.0);
+    float falloff = smoothstep(1.0, 0.05, rDist);
+    falloff = falloff * falloff;
     float aS = clamp(alphaOut * falloff, 0.0, 1.0);
     gl_FragColor = vec4(srgbBase * aS, aS);
     return;
@@ -559,7 +559,7 @@ void main() {
   }
 
   float shadowVis = calcShadow(N, L1);
-  vec3 shadowTint = mix(pow(max(uShadowColor, vec3(0.02)), vec3(2.2)), vec3(1.0), shadowVis);
+  vec3 shadowTint = mix(pow(max(uShadowColor, vec3(0.18)), vec3(1.8)) * 0.72 + vec3(0.18), vec3(1.0), shadowVis);
   float ndl1 = max(dot(N, L1), 0.0);
   float ndl2 = max(dot(N, L2), 0.0);
   float ndv = max(dot(N, V), 0.0);
@@ -604,7 +604,7 @@ void main() {
     // 3-BAND STUDIO GHIBLI / SPIDER-VERSE TOON CEL SHADER
     float litVal = ndl1 * (0.35 + 0.65 * shadowVis);
     float band = litVal > 0.58 ? 1.0 : (litVal > 0.18 ? 0.66 : 0.36);
-    vec3 toonShade = mix(pow(max(uShadowColor, vec3(0.1)), vec3(2.2)) * 1.4, keyLin, band);
+    vec3 toonShade = mix(pow(max(uShadowColor, vec3(0.22)), vec3(1.8)) * 0.95 + vec3(0.16), keyLin * 1.08, band);
     float toonSpec = smoothstep(0.86, 0.91, dot(N, normalize(L1 + V))) * shadowVis * (1.0 - rough) * 0.48;
     float toonRim = smoothstep(0.58, 0.72, 1.0 - ndv) * max(dot(N, L1) + 0.4, 0.0) * uRimPow * 0.55;
     col = baseCol * (toonShade + dynDiff * 0.7 + fillLin * ndl2 * 0.22 + vec3(uAmb * 0.45)) + vec3(toonSpec) + pow(max(uRimColor, vec3(0.0)), vec3(2.2)) * toonRim;
@@ -624,7 +624,7 @@ void main() {
 
     vec3 F0 = mix(vec3(0.035), baseCol, metal);
     vec3 F = F0 + (vec3(1.0) - F0) * fresnel;
-    vec3 hemi = mix(vec3(0.24, 0.20, 0.17), vec3(0.58, 0.72, 0.92), N.y * 0.5 + 0.5) * uAmb;
+    vec3 hemi = mix(vec3(0.38, 0.34, 0.28), vec3(0.84, 0.92, 1.0), N.y * 0.5 + 0.5) * max(uAmb, 0.34);
 
     vec3 diff = baseCol * (1.0 - metal * 0.86) * (hemi + keyLin * ndl1 * shadowTint * 1.18 + fillLin * ndl2 * 0.40 + dynDiff);
     vec3 specCol = mix(vec3(1.0), baseCol, metal) * (spec1 * keyLin * shadowVis * (0.12 + 0.88 * metal + (1.0 - rough) * 0.25) + dynSpec);
@@ -1003,7 +1003,7 @@ function buildEllipsoidGeo(rx, ry, rz, segs) {
     }
   }
   const st = s + 1;
-  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, a + 1, b, a + 1, b + 1, b); }
   return { pos, norm, uv, idx };
 }
 
@@ -1023,6 +1023,19 @@ function buildBoxGeo(w, h, d) {
     for (let k = 1; k <= 4; k++) { pos.push(fc[k][0], fc[k][1], fc[k][2]); norm.push(n[0], n[1], n[2]); }
     uv.push(0, 0, 1, 0, 1, 1, 0, 1); idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
+  return { pos, norm, uv, idx };
+}
+
+function buildShadowDiscGeo(rx, rz, segs) {
+  const s = clampNum(segs || 32, 12, 48);
+  const pos = [0, 0, 0], norm = [0, 1, 0], uv = [0.5, 0.5], idx = [];
+  for (let i = 0; i <= s; i++) {
+    const a = (i / s) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+    pos.push(ca * rx, 0, sa * rz);
+    norm.push(0, 1, 0);
+    uv.push(0.5 + ca * 0.5, 0.5 + sa * 0.5);
+  }
+  for (let i = 1; i <= s; i++) idx.push(0, i + 1, i);
   return { pos, norm, uv, idx };
 }
 
@@ -1050,7 +1063,7 @@ function buildRoundBoxGeo(w, h, d, rad, segs) {
     }
   }
   const st = s + 1;
-  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, a + 1, b, a + 1, b + 1, b); }
   return { pos, norm, uv, idx };
 }
 
@@ -1064,11 +1077,11 @@ function buildLatheGeo(profile, segs) {
     const v = j / Math.max(1, m - 1);
     for (let i = 0; i <= s; i++) {
       const u = i / s, a = u * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
-      pos.push(ca * pCur[0], pCur[1], sa * pCur[0]); norm.push(ca * nr, ny, sa * nr); uv.push(u, v);
+      pos.push(ca * pCur[0], pCur[1], sa * pCur[0]); norm.push(ca * nr, ny, sa * nr); uv.push(1 - u, v);
     }
   }
   const st = s + 1;
-  for (let j = 0; j < m - 1; j++) for (let i = 0; i < s; i++) { const a = j * st + i, b = a + st; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+  for (let j = 0; j < m - 1; j++) for (let i = 0; i < s; i++) { const a = j * st + i, b = a + st; idx.push(a, b, a + 1, b, b + 1, a + 1); }
   return { pos, norm, uv, idx };
 }
 
@@ -1334,7 +1347,7 @@ function attachWorldHelpers(nodeApi, tSec, randFn) {
         const a = i * golden, rad = (type === "sakura" ? 0.05 : lerpNum(0.02, 0.20, Math.pow(lay, 0.9))) * grow;
         const pW = (type === "sakura" ? 0.24 : lerpNum(0.14, 0.36, lay)) * grow;
         const pH = (type === "sakura" ? 0.32 : lerpNum(0.22, 0.46, lay)) * grow;
-        const pitch = type === "sakura" ? lerpNum(0.3, 1.25, pb) : lerpNum(0.12, 0.24 + 0.70 * lay, pb);
+        const pitch = type === "sakura" ? lerpNum(0.3, 1.15, pb) : lerpNum(0.08, 0.14 + 0.56 * Math.pow(lay, 1.25), pb);
         head.petal([Math.sin(a) * rad, (1 - lay) * 0.10 * grow, Math.cos(a) * rad], [pitch, a, 0], pW, pH, 0.06, 0.08 * pb, {
           color: (type === "rose" && lay < 0.4) ? "#6B0D22" : col, color2: col2, roughness: 0.36, sss: 0.48
         });
@@ -1488,7 +1501,7 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
           torus(pos, R, r, rot, mat, segsU, segsV) { pushMesh(buildTorusGeo(R || 1, r || 0.22, segsU, segsV), pos, rot, 1, mat); return nodeApi; },
           plane(pos, w, h, rot, mat) { pushMesh(buildBoxGeo(w || 2, 0.02, h || 2), pos, rot, 1, mat); return nodeApi; },
           shadow(pos, rx, rz, alpha) {
-            pushMesh(buildEllipsoidGeo(rx || 0.65, 0.015, rz || 0.65, 28), pos, [0, 0, 0], 1, {
+            pushMesh(buildShadowDiscGeo(rx || 0.65, rz || 0.65, 32), pos, [0, 0, 0], 1, {
               color: "#09100C", featherShadow: true, castShadow: false, alpha: alpha !== undefined ? alpha : 0.34
             });
             return nodeApi;
@@ -2251,7 +2264,7 @@ function attachActorBuilders(g3dObj, tSec) {
       torso.sphere([s * 0.14, 0.11, 0.208], 0.028, { color: "#F5C242", material: "brushed_metal", metalness: 0.88, roughness: 0.20 }, 12);
     });
     if (c.apron) {
-      torso.roundBox([0, -0.08, 0.205], [0.38, 0.32, 0.03], 0.02, [0, 0, 0], mkMat(c.apronColor || "#E4AE48", { material: "fabric" }), 12);
+      torso.roundBox([0, -0.07, 0.192], [0.36, 0.26, 0.04], 0.025, [0, 0, 0], mkMat(c.apronColor || "#E4AE48", { material: "fabric" }), 12);
     }
     if (c.backpack !== false) {
       torso.roundBox([0, 0.04 + secLag * 0.3, -0.24], [0.36, 0.38, 0.16], 0.07, [secLag * 0.5, 0, 0], mkMat("#C6643A", { roughness: 0.62 }));
@@ -2283,7 +2296,7 @@ function attachActorBuilders(g3dObj, tSec) {
 
     // Mouth with Auto Lip-Sync or Expression
     if (talkOpen > 0.08) {
-      head.ellipsoid([0, -0.13, 0.305], [0.058, 0.022 + talkOpen * 0.048, 0.038], [0.1, 0, 0], { color: "#A82B3D", roughness: 0.38 }, 14);
+      head.ellipsoid([0, -0.122, 0.308], [0.068, 0.016 + talkOpen * 0.028, 0.028], [0.12, 0, 0], { color: "#C24052", roughness: 0.38 }, 14);
     } else if (expr === "joy") {
       head.ellipsoid([0, -0.13, 0.30], [0.074, 0.052, 0.042], [0.15, 0, 0], { color: "#B83244", roughness: 0.38 }, 14);
     } else if (expr === "wow") {
@@ -2300,7 +2313,7 @@ function attachActorBuilders(g3dObj, tSec) {
     [-1, 1].forEach((s) => {
       const isWink = (expr === "wink" && s > 0);
       const eyeOpenY = isWink ? 0.10 : lerpNum(1.0, 0.08, clampNum(blink, 0, 1));
-      const ex = s * 0.135, ey = 0.045, ez = 0.295;
+      const ex = s * 0.128, ey = 0.038, ez = 0.282;
       head.ellipsoid([ex, ey, ez], [0.074, 0.084 * eyeOpenY, 0.044], [0, s * 0.22, 0], { color: "#FFFFFF", roughness: 0.08 }, 18);
       if (eyeOpenY > 0.25) {
         head.ellipsoid([ex + s * 0.008, ey, ez + 0.027], [0.048, 0.058 * eyeOpenY, 0.028], [0, s * 0.22, 0], { color: eyeCol, roughness: 0.06 }, 16);
@@ -2319,6 +2332,9 @@ function attachActorBuilders(g3dObj, tSec) {
     // Hair & Headgear Styles ("hat" | "sprout" | "bob" | "spiky" | "bun" | "curly")
     const hairStyle = c.hairStyle || (c.hat === false ? "sprout" : "hat");
     head.ellipsoid([0, 0.13, -0.04], [0.37, 0.26, 0.36], [-0.15, 0, 0], mkMat(hair, { roughness: 0.78 }), 24);
+    head.ellipsoid([-0.14, 0.21, 0.24], [0.16, 0.09, 0.12], [0.22, -0.25, 0.22], mkMat(hair, { roughness: 0.78 }), 16);
+    head.ellipsoid([ 0.12, 0.22, 0.24], [0.17, 0.09, 0.12], [0.22,  0.22, -0.20], mkMat(hair, { roughness: 0.78 }), 16);
+    head.ellipsoid([ 0.00, 0.24, 0.27], [0.14, 0.08, 0.10], [0.28,  0.00,  0.00], mkMat(hair, { roughness: 0.78 }), 14);
     if (hairStyle === "bun") {
       head.sphere([0, 0.38, -0.14], 0.16, mkMat(hair, { roughness: 0.78 }), 18);
     } else if (hairStyle === "spiky") {
@@ -2337,7 +2353,7 @@ function attachActorBuilders(g3dObj, tSec) {
       const hatNode = head.node({ pos: [0, 0.26, -0.02], rot: [-0.12 + secLag * 0.6, 0, 0] });
       hatNode.cylinder([0, 0, 0], 0.56, 0.52, 0.036, [0, 0, 0], mkMat(hatCol, { material: matStyle === "toon" ? "toon" : "fabric" }), 32);
       hatNode.ellipsoid([0, 0.06, 0], [0.33, 0.18, 0.33], [0, 0, 0], mkMat(hatCol, { material: matStyle === "toon" ? "toon" : "fabric" }), 26);
-      hatNode.torus([0, 0.025, 0], 0.335, 0.022, [Math.PI * 0.5, 0, 0], mkMat(overalls), 32, 10);
+      hatNode.torus([0, 0.032, 0], 0.328, 0.024, [0, 0, 0], mkMat(overalls), 32, 10);
     }
 
     return { root, hips, torso, head, leftHand, rightHand };
@@ -3008,8 +3024,10 @@ function makeUiApi(S) {
         c.font = "500 " + Math.round(18 * S) + "px sans-serif";
         const w2 = sub ? c.measureText(String(sub)).width : 0;
         const cw = Math.max(w1, w2) + 42 * S, ch = sub ? 78 * S : 52 * S;
-        const cx = dx >= 0 ? bx + 8 * S : bx - cw - 8 * S;
-        const cy = by - ch * 0.5;
+        const padC = 28 * S;
+        const rawCx = dx >= 0 ? bx + 8 * S : bx - cw - 8 * S;
+        const cx = clampNum(rawCx, padC, c.canvas.width - padC - cw);
+        const cy = clampNum(by - ch * 0.5, padC, c.canvas.height - padC - ch);
         c.globalAlpha *= cardK;
         drawGlassBase(c, cx, cy, cw, ch, 16 * S, { light, chromatic: true });
         c.fillStyle = light ? "#0E141D" : "#FFFFFF";
