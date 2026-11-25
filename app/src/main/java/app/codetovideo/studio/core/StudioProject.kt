@@ -106,12 +106,12 @@ data class StudioProject(
 
 const val DEFAULT_SOURCE = """/*<studio-meta>
 {
-  "schemaVersion": 8,
+  "schemaVersion": 9,
   "title": "iOS 26 Liquid Glass Keynote",
   "defaultDurationSeconds": 5,
   "seed": 26,
   "props": [
-    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.8"},
+    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.9"},
     {"key":"title","label":"Judul Utama","type":"text","default":"Desain kaca yang"},
     {"key":"highlight","label":"Kata Aksen","type":"text","default":"mengalir."},
     {"key":"accent","label":"Warna Aksen","type":"color","default":"#DCE8F5"}
@@ -158,7 +158,7 @@ const pillP = fx.stagger(frame, 0, 4);
 ctx.save();
 ctx.globalAlpha = ui.clamp(pillP, 0, 1);
 ctx.translate(0, (1 - pillP) * 18 * S);
-ui.drawPill(ctx, pad, H * 0.14, String(P.eyebrow || "RENDER VIDEO CODE V0.8"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
+ui.drawPill(ctx, pad, H * 0.14, String(P.eyebrow || "RENDER VIDEO CODE V0.9"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
 ctx.restore();
 
 const fSize = Math.round(80 * S);

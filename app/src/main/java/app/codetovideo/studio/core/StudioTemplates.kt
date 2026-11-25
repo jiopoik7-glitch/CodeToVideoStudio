@@ -1,6 +1,174 @@
 package app.codetovideo.studio.core
 
 object StudioTemplates {
+    const val CHARACTER_STORY_3D = """/*<studio-meta>
+{
+  "schemaVersion": 9,
+  "title": "3D Character Story · Little Botanist",
+  "defaultDurationSeconds": 15,
+  "seed": 91,
+  "props": [
+    {"key":"brand","label":"Brand","type":"text","default":"Seflorner"},
+    {"key":"act1Text","label":"Cerita Bab 1","type":"text","default":"Halo! Yuk rawat satu tunas kecil hari ini."},
+    {"key":"act2Text","label":"Cerita Bab 2","type":"text","default":"Beri air secukupnya & cahaya pagi yang hangat."},
+    {"key":"act3Text","label":"Cerita Bab 3","type":"text","default":"Rawat dengan sabar, mekarnya bikin bahagia!"},
+    {"key":"roseColor","label":"Warna Mawar","type":"color","default":"#E03A58"},
+    {"key":"overallColor","label":"Warna Baju","type":"color","default":"#2B8A56"}
+  ],
+  "audio": {
+    "ambience": "lofi_garden",
+    "ambienceVolume": 0.16,
+    "cues": [
+      {"p": 0.01, "sfx": "swoosh_soft", "gain": 0.48},
+      {"p": 0.06, "sfx": "kalimba_note", "gain": 0.54, "pitch": 1.0},
+      {"p": 0.34, "sfx": "air_whoosh", "gain": 0.52},
+      {"p": 0.44, "sfx": "water_drop", "gain": 0.56, "pitch": 1.0},
+      {"p": 0.53, "sfx": "water_drop", "gain": 0.52, "pitch": 1.15},
+      {"p": 0.68, "sfx": "whip", "gain": 0.52},
+      {"p": 0.76, "sfx": "kalimba_note", "gain": 0.56, "pitch": 1.25},
+      {"p": 0.84, "sfx": "crystal_bloom", "gain": 0.58}
+    ]
+  }
+}
+</studio-meta>*/
+
+const roseCol = String(P.roseColor || "#E03A58");
+const overallCol = String(P.overallColor || "#2B8A56");
+const pad = Math.min(W, H) * 0.068;
+const innerW = W - pad * 2;
+const isWide = W > H * 1.15;
+
+ui.drawMeshBg(ctx, W, H, "#F4F6EF", [
+  { x: 0.82, y: 0.16, r: 0.78, col: "#FFE09E", a: 0.38 },
+  { x: 0.18, y: 0.80, r: 0.72, col: "#AEE4C2", a: 0.30 }
+], t);
+
+const act = p < 0.34 ? 0 : (p < 0.68 ? 1 : 2);
+const actP = act === 0 ? ui.seg(p, 0.0, 0.34) : (act === 1 ? ui.seg(p, 0.34, 0.68) : ui.seg(p, 0.68, 1.0));
+
+const sc = g3d.scene({
+  fov: 0.66,
+  ambient: 0.52,
+  keyColor: "#FFFDF7",
+  fillColor: "#D6ECFF",
+  fogColor: "#F4F6EF",
+  fogNear: 12,
+  fogFar: 26
+});
+
+const distK = isWide ? 1.0 : 1.24;
+if (act === 0) {
+  sc.orbit(-0.28 + actP * 0.38, 0.22, 6.2 * distK, [0, 0.68, 0]);
+} else if (act === 1) {
+  sc.orbit(0.32 + actP * 0.45, 0.30, 5.2 * distK, [0.22, 0.58, 0.1]);
+} else {
+  sc.orbit(-0.35 + actP * 1.15, 0.20 + Math.sin(actP * Math.PI) * 0.14, 5.8 * distK, [0.05, 0.75, 0]);
+}
+
+const island = sc.node({ pos: [0, 0, 0] });
+island.lathe([
+  [0.0, -1.15], [1.15, -0.78], [2.15, -0.22], [2.25, -0.04], [2.20, 0.0], [0.0, 0.0]
+], [0, 0, 0], [0, 0, 0], { color: "#7C5E4A", color2: "#4DAA68", roughness: 0.72 }, 36);
+
+for (let i = 0; i < 5; i++) {
+  const sa = i * 1.25 + 0.6;
+  const sr = 1.65 + (i % 2) * 0.22;
+  island.ellipsoid([Math.cos(sa) * sr, 0.04, Math.sin(sa) * sr], [0.16, 0.09, 0.13], [0, sa, 0], {
+    color: i % 2 === 0 ? "#B8B2A8" : "#969C92", roughness: 0.75
+  }, 16);
+}
+
+const charPose = act === 0 ? "wave" : (act === 1 ? "idle" : "joy");
+const botanist = g3d.stylizedCharacter(island, {
+  pos: [-0.72, 0, 0.18],
+  rot: [0, act === 0 ? 0.32 : 0.78, 0],
+  scale: 0.96,
+  pose: charPose,
+  overallColor: overallCol,
+  headYaw: act === 0 ? Math.sin(t * 2) * 0.15 : 0.12,
+  headPitch: act === 1 ? 0.18 : -0.04,
+  headRoll: Math.sin(t * 2.5) * 0.06
+});
+
+if (act === 1) {
+  const tilt = Math.sin(actP * Math.PI) * 0.58;
+  const canNode = botanist.torso.node({ pos: [0.46, 0.02, 0.34], rot: [0.45 + tilt, 0.2, -0.2] });
+  canNode.cylinder([0, 0, 0], 0.16, 0.15, 0.28, [0, 0, 0], { color: "#3BA8D8", color2: "#7AD4F5", roughness: 0.25, metalness: 0.15 }, 24);
+  canNode.cylinder([0, 0.12, 0.22], 0.028, 0.045, 0.32, [0.95, 0, 0], { color: "#3BA8D8", roughness: 0.25 }, 16);
+  canNode.sphere([0, 0.22, 0.36], 0.055, { color: "#F5C85C", roughness: 0.3, metalness: 0.4 }, 16);
+  for (let d = 0; d < 4; d++) {
+    const du = (t * 1.8 + d * 0.25) % 1;
+    island.ellipsoid([0.52 + (d - 1.5) * 0.06, ui.lerp(0.88, 0.44, du * du), 0.12], [0.026, 0.045, 0.026], [0, 0, 0], {
+      color: "#5AC8FA", roughness: 0.1, alpha: 0.85
+    }, 12);
+  }
+}
+
+const potNode = island.node({ pos: [0.68, 0, -0.05] });
+potNode.shadow([0, 0.005, 0], 0.54, 0.54, 0.32);
+potNode.lathe([
+  [0.0, 0.0], [0.34, 0.0], [0.44, 0.44], [0.50, 0.46],
+  [0.50, 0.56], [0.42, 0.56], [0.40, 0.49], [0.0, 0.50]
+], [0, 0, 0], [0, 0, 0], { color: "#8C3E26", color2: "#D46A44", roughness: 0.62 }, 32);
+potNode.ellipsoid([0, 0.50, 0], [0.39, 0.05, 0.39], [0, 0, 0], { color: "#3B261D", roughness: 0.9 }, 20);
+
+const growP = ui.lerp(0.28, 1.0, ease.apple(ui.seg(p, 0.36, 0.76)));
+const bloomP = ease.apple(ui.seg(p, 0.62, 0.90));
+const stemTopY = 0.50 + growP * 0.72;
+potNode.tube([[0, 0.48, 0], [0.03, (0.48 + stemTopY) * 0.5, 0.02], [0, stemTopY, 0]], 0.036, 0.026, {
+  color: "#1B6B3E", color2: "#34C759", roughness: 0.42, sss: 0.25
+}, 14);
+
+for (let i = 0; i < 2; i++) {
+  const ly = 0.52 + growP * (0.28 + i * 0.18);
+  potNode.leaf([0, ly, 0], [0.35, i * 2.8 + 0.5, 0], 0.44 * growP, 0.20 * growP, 0.08, {
+    color: "#228B4E", color2: "#56D888", roughness: 0.32, sss: 0.32
+  });
+}
+
+const golden = 2.399963229728653;
+for (let i = 0; i < 24; i++) {
+  const lay = i / 23;
+  const pb = ease.snap(ui.seg(bloomP, (1 - lay) * 0.28, 0.72 + (1 - lay) * 0.28));
+  const ang = i * golden;
+  const rad = ui.lerp(0.02, 0.20, Math.pow(lay, 0.9)) * growP;
+  const pW = ui.lerp(0.14, 0.36, lay) * growP;
+  const pH = ui.lerp(0.22, 0.46, lay) * growP;
+  const pitch = ui.lerp(0.12, 0.25 + 0.68 * lay, pb);
+  potNode.petal([Math.sin(ang) * rad, stemTopY + (1 - lay) * 0.12 * growP, Math.cos(ang) * rad], [pitch, ang, 0], pW, pH, 0.06, 0.08 * pb, {
+    color: lay < 0.4 ? "#6B1228" : roseCol,
+    color2: lay < 0.4 ? roseCol : "#FF96AE",
+    roughness: 0.38, sss: 0.45
+  });
+}
+
+sc.render(ctx);
+
+if (act === 2) {
+  fx.particles.confetti(ctx, 22, [roseCol, "#FFD166", overallCol, "#5AC8FA"], ui.seg(actP, 0.18, 0.55));
+}
+
+const storyTexts = [
+  String(P.act1Text || "Halo! Yuk rawat satu tunas kecil hari ini."),
+  String(P.act2Text || "Beri air secukupnya & cahaya pagi yang hangat."),
+  String(P.act3Text || "Rawat dengan sabar, mekarnya bikin bahagia!")
+];
+const tags = ["BAB 01 · SAPA", "BAB 02 · SIRAM", "BAB 03 · MEKAR"];
+const cardH = (isWide ? 168 : 224) * S;
+const cardY = pad + 18 * S;
+const cIn = ease.snap(ui.seg(actP, 0.0, 0.16));
+
+ctx.save();
+ctx.globalAlpha = cIn;
+ctx.translate(0, (1 - cIn) * -28 * S);
+ui.drawLiquidGlass(ctx, pad, cardY, innerW, cardH, 28 * S, { light: true, sweep: (actP * 1.3) % 1 });
+ui.drawPill(ctx, pad + 28 * S, cardY + 24 * S, tags[act], ui.rgba(overallCol, 0.14), overallCol, Math.max(11, Math.round(19 * S)));
+fx.text.wordStagger(ctx, storyTexts[act], pad + 28 * S, cardY + 74 * S, innerW - 56 * S, Math.round((isWide ? 36 : 42) * S), "#142018", Math.round(act * (D / 3) * fps) + 2, "left");
+ctx.restore();
+
+ui.drawProgressBar(ctx, pad, H - pad - 8 * S, innerW, 8 * S, p, overallCol, "rgba(20,32,24,0.14)");
+"""
+
     const val CHROME_3D_GPU = """/*<studio-meta>
 {
   "schemaVersion": 8,
@@ -206,7 +374,7 @@ const potProfile = [
 sc.lathe(potProfile, [0, floatY, 0], [0, 0, 0], {
   color: "#6E331F", color2: potCol, roughness: 0.64, metalness: 0.04, rim: 0.35
 }, 36);
-sc.sphere([0, floatY - 0.72, 0], 0.66, { color: "#2D1D16", color2: "#4A3125", roughness: 0.92, metalness: 0.0, rim: 0.1 }, 20);
+sc.ellipsoid([0, floatY - 0.72, 0], [0.68, 0.14, 0.68], [0, 0, 0], { color: "#2D1D16", color2: "#4A3125", roughness: 0.92, metalness: 0.0, rim: 0.1 }, 20);
 
 // Smooth Curved Botanical Stem (GPU Tube)
 const stemPts = [];

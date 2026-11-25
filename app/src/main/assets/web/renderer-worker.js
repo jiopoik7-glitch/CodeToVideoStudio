@@ -11,7 +11,6 @@ let ctx = null;
 let currentWidth = 0;
 let currentHeight = 0;
 
-// Persistent GPU WebGL OffscreenCanvas & Reusable Buffers (Zero GPU Memory Leak!)
 let glCanvas = null;
 let gl = null;
 let glW = 0;
@@ -163,7 +162,7 @@ function makeCameraApi(W, H) {
 }
 
 // =======================================================
-// REAL GPU WEBGL 3D ENGINE (g3d) + GLSL RAYMARCHING SHADER
+// REAL GPU WEBGL 3D ENGINE v0.9 — HIERARCHICAL RIGGING & TRUE-COLOR PBR
 // =======================================================
 const PBR_VS = `
 attribute vec3 aPos;
@@ -205,9 +204,16 @@ uniform float uRimPow;
 uniform float uSss;
 uniform float uAlpha;
 uniform float uAmb;
+uniform float uUnlit;
 uniform vec3 uFogColor;
 uniform vec2 uFogRange;
 void main() {
+  vec3 baseCol = mix(uColor, uColor2, clamp(vUv.y, 0.0, 1.0));
+  if (uUnlit > 0.5) {
+    float a0 = clamp(uAlpha, 0.0, 1.0);
+    gl_FragColor = vec4(baseCol * a0, a0);
+    return;
+  }
   vec3 N = normalize(vNorm);
   if (!gl_FrontFacing) N = -N;
   vec3 V = normalize(uEye - vWorldPos);
@@ -215,58 +221,56 @@ void main() {
   vec3 L2 = normalize(uFillDir);
   vec3 L3 = normalize(uRimDir);
 
-  vec3 baseCol = mix(uColor, uColor2, clamp(vUv.y, 0.0, 1.0));
   float rough = clamp(uRoughness, 0.06, 0.98);
   float metal = clamp(uMetalness, 0.0, 1.0);
 
-  // Diffuse + soft wrap subsurface scattering
+  // Diffuse + soft wrap subsurface scattering (warm skin, leaves, petals)
   float ndl1 = max(dot(N, L1), 0.0);
   float ndl2 = max(dot(N, L2), 0.0);
-  float wrap = max(0.0, (dot(N, L1) + 0.45) / 1.45);
-  float sssTerm = pow(max(0.0, dot(-L1, V)), 2.2) * uSss + wrap * uSss * 0.25;
+  float wrap = max(0.0, (dot(N, L1) + 0.42) / 1.42);
+  float sssTerm = pow(max(0.0, dot(-L1, V)), 2.2) * uSss + wrap * uSss * 0.28;
 
-  // Specular GGX-like highlight
-  float shininess = exp2(10.0 * (1.0 - rough) + 1.5);
+  // Specular highlight
+  float shininess = exp2(9.5 * (1.0 - rough) + 1.5);
   vec3 H1 = normalize(L1 + V);
   vec3 H2 = normalize(L2 + V);
-  float spec1 = pow(max(dot(N, H1), 0.0), shininess) * (0.28 + 0.85 * (1.0 - rough));
-  float spec2 = pow(max(dot(N, H2), 0.0), shininess * 0.5) * 0.16;
+  float spec1 = pow(max(dot(N, H1), 0.0), shininess) * (0.20 + 0.85 * (1.0 - rough));
+  float spec2 = pow(max(dot(N, H2), 0.0), shininess * 0.5) * 0.12;
 
-  // Procedural Studio HDRI Reflection (gives chrome/glass/titanium realism!)
+  // Procedural Studio HDRI Reflection (scaled cleanly by metalness so dielectrics keep rich true colors!)
   vec3 R = reflect(-V, N);
   float skyT = clamp(R.y * 0.5 + 0.5, 0.0, 1.0);
   vec3 envGround = vec3(0.06, 0.08, 0.11);
-  vec3 envHorizon = vec3(0.55, 0.62, 0.72);
-  vec3 envSky = vec3(0.88, 0.93, 1.0);
+  vec3 envHorizon = vec3(0.52, 0.58, 0.68);
+  vec3 envSky = vec3(0.86, 0.92, 0.98);
   vec3 envCol = skyT < 0.5
     ? mix(envGround, envHorizon, pow(skyT * 2.0, 1.6))
     : mix(envHorizon, envSky, pow((skyT - 0.5) * 2.0, 0.9));
-  float softbox = smoothstep(0.68, 0.95, dot(R, normalize(vec3(0.45, 0.78, 0.42))));
-  envCol += vec3(0.95, 0.96, 1.0) * softbox * (1.15 - rough * 0.75);
+  float softbox = smoothstep(0.74, 0.96, dot(R, normalize(vec3(0.45, 0.78, 0.42))));
+  envCol += vec3(0.92, 0.94, 1.0) * softbox * (1.0 - rough * 0.75);
 
   float ndv = max(dot(N, V), 0.0);
-  float fresnel = pow(1.0 - ndv, 3.2);
+  float fresnel = pow(1.0 - ndv, 3.6);
   vec3 F0 = mix(vec3(0.04), baseCol, metal);
   vec3 F = F0 + (vec3(1.0) - F0) * fresnel;
 
-  // Hemisphere ambient
-  vec3 hemi = mix(vec3(0.22, 0.25, 0.30), vec3(0.85, 0.92, 0.98), N.y * 0.5 + 0.5) * uAmb;
-  vec3 diff = baseCol * (1.0 - metal * 0.78) * (hemi + uKeyCol * ndl1 * 0.95 + uFillCol * ndl2 * 0.34);
-  vec3 specCol = mix(vec3(1.0), baseCol, metal) * (spec1 * uKeyCol + spec2 * uFillCol);
-  vec3 envRefl = envCol * F * (0.28 + 0.72 * (1.0 - rough)) * (0.35 + 0.65 * metal + 0.45 * fresnel);
-  vec3 rimGlow = uRimColor * (fresnel * 0.55 + max(dot(N, L3), 0.0) * 0.35) * uRimPow;
-  vec3 sssCol = baseCol * vec3(1.25, 0.85, 0.90) * sssTerm;
+  // Hemisphere ambient + True-Color Diffuse
+  vec3 hemi = mix(vec3(0.32, 0.34, 0.38), vec3(0.92, 0.96, 1.0), N.y * 0.5 + 0.5) * uAmb;
+  vec3 diff = baseCol * (1.0 - metal * 0.82) * (hemi + uKeyCol * ndl1 * 0.96 + uFillCol * ndl2 * 0.36);
+  vec3 specCol = mix(vec3(1.0), baseCol, metal) * (spec1 * uKeyCol + spec2 * uFillCol) * (0.22 + 0.78 * metal + (1.0 - rough) * 0.35);
+  float envWeight = (0.06 + 0.94 * metal) * (0.25 + 0.75 * (1.0 - rough));
+  vec3 envRefl = envCol * F * envWeight;
+  vec3 rimGlow = uRimColor * (fresnel * 0.45 + max(dot(N, L3), 0.0) * 0.25) * uRimPow * 0.45;
+  vec3 sssCol = baseCol * vec3(1.22, 0.92, 0.94) * sssTerm;
 
   vec3 col = diff + specCol + envRefl + rimGlow + sssCol + uEmissive;
 
-  // Distance fog
   if (uFogRange.y > uFogRange.x) {
     float dist = length(uEye - vWorldPos);
     float fogF = smoothstep(uFogRange.x, uFogRange.y, dist);
     col = mix(col, uFogColor, fogF * 0.85);
   }
 
-  // Smooth Filmic Tone Mapping
   col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
   col = clamp(col, 0.0, 1.0);
   float a = clamp(uAlpha, 0.0, 1.0);
@@ -349,7 +353,23 @@ function ensureGl(W, H) {
   return gl;
 }
 
-// Column-Major 4x4 Matrix Math for WebGL
+// Column-Major 4x4 Matrix Math & Hierarchical Node Multiplication
+function m4Identity() {
+  return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+}
+
+function m4Multiply(a, b) {
+  const out = new Float32Array(16);
+  for (let c = 0; c < 4; c++) {
+    const b0 = b[c*4], b1 = b[c*4+1], b2 = b[c*4+2], b3 = b[c*4+3];
+    out[c*4]   = a[0]*b0 + a[4]*b1 + a[8]*b2  + a[12]*b3;
+    out[c*4+1] = a[1]*b0 + a[5]*b1 + a[9]*b2  + a[13]*b3;
+    out[c*4+2] = a[2]*b0 + a[6]*b1 + a[10]*b2 + a[14]*b3;
+    out[c*4+3] = a[3]*b0 + a[7]*b1 + a[11]*b2 + a[15]*b3;
+  }
+  return out;
+}
+
 function m4Persp(fov, aspect, near, far) {
   const f = 1.0 / Math.tan(fov * 0.5), nf = 1.0 / (near - far);
   return new Float32Array([
@@ -378,7 +398,7 @@ function m4LookAt(eye, target, up) {
   ]);
 }
 
-function m4Model(pos, rot, scale) {
+function m4Transform(pos, rot, scale) {
   const px = pos ? pos[0] : 0, py = pos ? pos[1] : 0, pz = pos ? pos[2] : 0;
   const rx = rot ? rot[0] : 0, ry = rot ? rot[1] : 0, rz = rot ? rot[2] : 0;
   const sx = Array.isArray(scale) ? scale[0] : (scale !== undefined ? scale : 1);
@@ -387,7 +407,6 @@ function m4Model(pos, rot, scale) {
   const cx = Math.cos(rx), sxr = Math.sin(rx);
   const cy = Math.cos(ry), syr = Math.sin(ry);
   const cz = Math.cos(rz), szr = Math.sin(rz);
-  // Rotation order: Ry * Rx * Rz
   const r00 = cy * cz + syr * sxr * szr;
   const r10 = cx * szr;
   const r20 = -syr * cz + cy * sxr * szr;
@@ -422,9 +441,11 @@ function m3NormalFromM4(m) {
   ]);
 }
 
-// High-Resolution Smooth Geometry Builders for g3d
-function buildSphereGeo(rad, segs) {
-  const s = clampNum(segs || 28, 8, 56);
+// =======================================================
+// HIGH-DETAIL CHARACTER & STUDIO 3D GEOMETRY BUILDERS
+// =======================================================
+function buildEllipsoidGeo(rx, ry, rz, segs) {
+  const s = clampNum(segs || 28, 8, 52);
   const rings = Math.max(6, Math.round(s * 0.72));
   const pos = [], norm = [], uv = [], idx = [];
   for (let y = 0; y <= rings; y++) {
@@ -432,9 +453,11 @@ function buildSphereGeo(rad, segs) {
     const sp = Math.sin(phi), cp = Math.cos(phi);
     for (let x = 0; x <= s; x++) {
       const u = x / s, th = u * Math.PI * 2;
-      const nx = sp * Math.cos(th), ny = cp, nz = sp * Math.sin(th);
-      pos.push(nx * rad, ny * rad, nz * rad);
-      norm.push(nx, ny, nz);
+      const ux = sp * Math.cos(th), uy = cp, uz = sp * Math.sin(th);
+      pos.push(ux * rx, uy * ry, uz * rz);
+      let nx = ux / (rx || 1), ny = uy / (ry || 1), nz = uz / (rz || 1);
+      const nm = Math.hypot(nx, ny, nz) || 1;
+      norm.push(nx / nm, ny / nm, nz / nm);
       uv.push(u, 1 - v);
     }
   }
@@ -469,6 +492,56 @@ function buildBoxGeo(w, h, d) {
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
   return { pos, norm, uv, idx };
+}
+
+// Smooth Subdivided Rounded Box (Super-ellipsoid bevel — Pixar/Apple hardware feel!)
+function buildRoundBoxGeo(w, h, d, rad, segs) {
+  const s = clampNum(segs || 16, 8, 28);
+  const rings = Math.max(8, Math.round(s * 0.8));
+  const r = Math.min(rad || 0.12, w * 0.45, h * 0.45, d * 0.45);
+  const bx = Math.max(0.001, w * 0.5 - r);
+  const by = Math.max(0.001, h * 0.5 - r);
+  const bz = Math.max(0.001, d * 0.5 - r);
+  const pos = [], norm = [], uv = [], idx = [];
+  for (let y = 0; y <= rings; y++) {
+    const v = y / rings, phi = v * Math.PI;
+    const sp = Math.sin(phi), cp = Math.cos(phi);
+    for (let x = 0; x <= s; x++) {
+      const u = x / s, th = u * Math.PI * 2;
+      const nx = sp * Math.cos(th), ny = cp, nz = sp * Math.sin(th);
+      const sx = (nx >= 0 ? 1 : -1) * bx + nx * r;
+      const sy = (ny >= 0 ? 1 : -1) * by + ny * r;
+      const sz = (nz >= 0 ? 1 : -1) * bz + nz * r;
+      pos.push(sx, sy, sz);
+      norm.push(nx, ny, nz);
+      uv.push(u, 1 - v);
+    }
+  }
+  const stride = s + 1;
+  for (let y = 0; y < rings; y++) {
+    for (let x = 0; x < s; x++) {
+      const a = y * stride + x, b = a + stride;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  return { pos, norm, uv, idx };
+}
+
+// Smooth Capsule (Rounded cylinder along Y axis — ideal for arms, legs, fingers, torsos!)
+function buildCapsuleGeo(r, len, segs) {
+  const s = clampNum(segs || 20, 8, 36);
+  const halfCyl = Math.max(0.001, (len || 0.6) * 0.5);
+  const hemiRings = 6;
+  const prof = [];
+  for (let i = 0; i <= hemiRings; i++) {
+    const a = -Math.PI * 0.5 + (i / hemiRings) * (Math.PI * 0.5);
+    prof.push([Math.cos(a) * r, -halfCyl + Math.sin(a) * r]);
+  }
+  for (let i = 0; i <= hemiRings; i++) {
+    const a = (i / hemiRings) * (Math.PI * 0.5);
+    prof.push([Math.cos(a) * r, halfCyl + Math.sin(a) * r]);
+  }
+  return buildLatheGeo(prof, s);
 }
 
 function buildTorusGeo(R, r, segsU, segsV) {
@@ -528,13 +601,11 @@ function buildLatheGeo(profile, segs) {
   return { pos, norm, uv, idx };
 }
 
-// Ultra-smooth curved 3D petal grid (6x8 smooth normals — Blender quality!)
 function buildPetalGeo(w, h, cup, curl) {
   const nu = 6, nv = 8;
   const grid = [];
   for (let j = 0; j <= nv; j++) {
     const v = j / nv;
-    // Organic teardrop-heart rose petal width profile
     const widthProfile = Math.sin(Math.pow(v, 0.72) * Math.PI) * (0.85 + 0.25 * Math.sin(v * Math.PI));
     const halfW = w * 0.5 * Math.max(0.08, widthProfile);
     const y = v * h;
@@ -598,7 +669,8 @@ function buildLeafGeo(len, wid, bend) {
       const pD = grid[Math.max(0, j - 1)][i], pU = grid[Math.min(nv, j + 1)][i];
       const tx = pR[0] - pL[0], ty = pR[1] - pL[1], tz = pR[2] - pL[2];
       const bx = pU[0] - pD[0], by = pU[1] - pD[1], bz = pU[2] - pD[2];
-      let nx = by * tz - bz * ty, ny = bz * tx - bx * tz, nz = bx * ty - by * tx;
+      // Upward-facing normal (+Y)
+      let nx = ty * bz - tz * by, ny = tz * bx - tx * bz, nz = tx * by - ty * bx;
       const nm = Math.hypot(nx, ny, nz) || 1;
       pos.push(p0[0], p0[1], p0[2]);
       norm.push(nx / nm, ny / nm, nz / nm);
@@ -609,7 +681,7 @@ function buildLeafGeo(len, wid, bend) {
   for (let j = 0; j < nv; j++) {
     for (let i = 0; i < nu; i++) {
       const a = j * st + i, b = a + st;
-      idx.push(a, a + 1, b, b, a + 1, b + 1);
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
     }
   }
   return { pos, norm, uv, idx };
@@ -650,7 +722,7 @@ function buildTubeGeo(pathPts, rStart, rEnd, segs) {
 }
 
 function makeG3dApi(W, H, tSec, pVal) {
-  return Object.freeze({
+  const g3dObj = {
     get supported() { return !!ensureGl(W, H); },
     scene(opts) {
       const o = opts || {};
@@ -664,68 +736,103 @@ function makeG3dApi(W, H, tSec, pVal) {
         rim: o.rimDir || [-0.25, 0.55, -0.82],
         keyCol: hexToVec3(o.keyColor || "#FFF9F2"),
         fillCol: hexToVec3(o.fillColor || "#C8E0FF"),
-        amb: o.ambient !== undefined ? o.ambient : 0.34,
+        amb: o.ambient !== undefined ? o.ambient : 0.42,
         fogCol: hexToVec3(o.fogColor || "#06090F"),
         fogNear: o.fogNear || 0,
         fogFar: o.fogFar || 0
       };
       const items = [];
-      const addItem = (geo, pos, rot, scale, mat) => {
-        items.push({ geo, pos: pos || [0, 0, 0], rot: rot || [0, 0, 0], scale: scale !== undefined ? scale : 1, mat: mat || {} });
+
+      // Hierarchical Node Factory (Supports Unlimited Parent-Child Rigging!)
+      const createNode = (parentWorldM, nodeOpts) => {
+        const no = nodeOpts || {};
+        const localM = m4Transform(no.pos, no.rot, no.scale);
+        const worldM = m4Multiply(parentWorldM, localM);
+        const pushMesh = (geo, pos, rot, scale, mat) => {
+          const itemM = m4Multiply(worldM, m4Transform(pos, rot, scale));
+          items.push({ geo, modelM: itemM, mat: mat || {} });
+        };
+        const nodeApi = {
+          node(childOpts) { return createNode(worldM, childOpts); },
+          sphere(pos, r, mat, segs) { pushMesh(buildEllipsoidGeo(r || 1, r || 1, r || 1, segs), pos, [0, 0, 0], 1, mat); return nodeApi; },
+          ellipsoid(pos, radii, rot, mat, segs) {
+            const rr = Array.isArray(radii) ? radii : [radii || 1, radii || 1, radii || 1];
+            pushMesh(buildEllipsoidGeo(rr[0], rr[1], rr[2], segs), pos, rot, 1, mat); return nodeApi;
+          },
+          box(pos, size, rot, mat) {
+            const sz = Array.isArray(size) ? size : [size || 1, size || 1, size || 1];
+            pushMesh(buildBoxGeo(sz[0], sz[1], sz[2]), pos, rot, 1, mat); return nodeApi;
+          },
+          roundBox(pos, size, rad, rot, mat, segs) {
+            const sz = Array.isArray(size) ? size : [size || 1, size || 1, size || 1];
+            pushMesh(buildRoundBoxGeo(sz[0], sz[1], sz[2], rad, segs), pos, rot, 1, mat); return nodeApi;
+          },
+          capsule(pos, r, len, rot, mat, segs) {
+            pushMesh(buildCapsuleGeo(r || 0.14, len || 0.6, segs), pos, rot, 1, mat); return nodeApi;
+          },
+          cylinder(pos, rBot, rTop, h, rot, mat, segs) {
+            const hh = (h || 1) * 0.5;
+            pushMesh(buildLatheGeo([[0, -hh], [rBot, -hh], [rBot, -hh], [rTop, hh], [rTop, hh], [0, hh]], segs || 32), pos, rot, 1, mat); return nodeApi;
+          },
+          cone(pos, r, h, rot, mat, segs) {
+            const hh = (h || 1) * 0.5;
+            pushMesh(buildLatheGeo([[0, -hh], [r || 0.6, -hh], [r || 0.6, -hh], [0.001, hh]], segs || 28), pos, rot, 1, mat); return nodeApi;
+          },
+          torus(pos, R, r, rot, mat, segsU, segsV) {
+            pushMesh(buildTorusGeo(R || 1, r || 0.22, segsU, segsV), pos, rot, 1, mat); return nodeApi;
+          },
+          plane(pos, w, h, rot, mat) {
+            pushMesh(buildBoxGeo(w || 2, 0.02, h || 2), pos, rot, 1, mat); return nodeApi;
+          },
+          shadow(pos, rx, rz, alpha) {
+            pushMesh(buildEllipsoidGeo(rx || 0.65, 0.008, rz || 0.65, 24), pos, [0, 0, 0], 1, {
+              color: "#04070B", unlit: true, alpha: alpha !== undefined ? alpha : 0.34
+            });
+            return nodeApi;
+          },
+          lathe(profile, pos, rot, mat, segs) {
+            pushMesh(buildLatheGeo(profile, segs || 36), pos, rot, 1, mat); return nodeApi;
+          },
+          petal(pos, rot, w, h, cup, curl, mat) {
+            pushMesh(buildPetalGeo(w || 0.5, h || 0.75, cup, curl), pos, rot, 1, mat); return nodeApi;
+          },
+          leaf(pos, rot, len, wid, bend, mat) {
+            pushMesh(buildLeafGeo(len || 0.9, wid || 0.36, bend), pos, rot, 1, mat); return nodeApi;
+          },
+          tube(pathPts, rStart, rEnd, mat, segs) {
+            pushMesh(buildTubeGeo(pathPts, rStart || 0.08, rEnd, segs || 16), [0, 0, 0], [0, 0, 0], 1, mat); return nodeApi;
+          },
+          mesh(geo, pos, rot, scale, mat) {
+            pushMesh(geo, pos, rot, scale, mat); return nodeApi;
+          }
+        };
+        return nodeApi;
       };
-      const api = {
+
+      const rootNode = createNode(m4Identity(), {});
+      const sceneApi = Object.assign({}, rootNode, {
         camera(newEye, newTarget, newFov, newUp) {
-          if (newEye) eye = newEye;
-          if (newTarget) target = newTarget;
-          if (newFov) fov = newFov;
-          if (newUp) up = newUp;
-          return api;
+          if (newEye) eye = newEye; if (newTarget) target = newTarget; if (newFov) fov = newFov; if (newUp) up = newUp;
+          return sceneApi;
         },
         orbit(az, elev, dist, tgt, newFov) {
-          const tt = tgt || target;
-          target = tt;
+          const tt = tgt || target; target = tt;
           eye = [
             tt[0] + dist * Math.cos(elev) * Math.sin(az),
             tt[1] + dist * Math.sin(elev),
             tt[2] + dist * Math.cos(elev) * Math.cos(az)
           ];
           if (newFov) fov = newFov;
-          return api;
+          return sceneApi;
         },
         lights(cfg) {
-          if (!cfg) return api;
-          if (cfg.key) lights.key = cfg.key;
-          if (cfg.fill) lights.fill = cfg.fill;
-          if (cfg.rim) lights.rim = cfg.rim;
-          if (cfg.keyColor) lights.keyCol = hexToVec3(cfg.keyColor);
-          if (cfg.fillColor) lights.fillCol = hexToVec3(cfg.fillColor);
-          if (cfg.ambient !== undefined) lights.amb = cfg.ambient;
-          if (cfg.fogColor) lights.fogCol = hexToVec3(cfg.fogColor);
-          if (cfg.fogNear !== undefined) lights.fogNear = cfg.fogNear;
-          if (cfg.fogFar !== undefined) lights.fogFar = cfg.fogFar;
-          return api;
+          if (!cfg) return sceneApi;
+          if (cfg.key) lights.key = cfg.key; if (cfg.fill) lights.fill = cfg.fill; if (cfg.rim) lights.rim = cfg.rim;
+          if (cfg.keyColor) lights.keyCol = hexToVec3(cfg.keyColor); if (cfg.fillColor) lights.fillCol = hexToVec3(cfg.fillColor);
+          if (cfg.ambient !== undefined) lights.amb = cfg.ambient; if (cfg.fogColor) lights.fogCol = hexToVec3(cfg.fogColor);
+          if (cfg.fogNear !== undefined) lights.fogNear = cfg.fogNear; if (cfg.fogFar !== undefined) lights.fogFar = cfg.fogFar;
+          return sceneApi;
         },
-        sphere(pos, r, mat, segs) { addItem(buildSphereGeo(r || 1, segs), pos, [0, 0, 0], 1, mat); return api; },
-        box(pos, size, rot, mat) {
-          const sz = Array.isArray(size) ? size : [size || 1, size || 1, size || 1];
-          addItem(buildBoxGeo(sz[0], sz[1], sz[2]), pos, rot, 1, mat); return api;
-        },
-        cylinder(pos, rBot, rTop, h, rot, mat, segs) {
-          const hh = (h || 1) * 0.5;
-          const prof = [[0, -hh], [rBot, -hh], [rBot, -hh], [rTop, hh], [rTop, hh], [0, hh]];
-          addItem(buildLatheGeo(prof, segs || 32), pos, rot, 1, mat); return api;
-        },
-        cone(pos, r, h, rot, mat, segs) {
-          const hh = (h || 1) * 0.5;
-          addItem(buildLatheGeo([[0, -hh], [r || 0.6, -hh], [r || 0.6, -hh], [0.001, hh]], segs || 28), pos, rot, 1, mat); return api;
-        },
-        torus(pos, R, r, rot, mat, segsU, segsV) { addItem(buildTorusGeo(R || 1, r || 0.22, segsU, segsV), pos, rot, 1, mat); return api; },
-        plane(pos, w, h, rot, mat) { addItem(buildBoxGeo(w || 2, 0.02, h || 2), pos, rot, 1, mat); return api; },
-        lathe(profile, pos, rot, mat, segs) { addItem(buildLatheGeo(profile, segs || 36), pos, rot, 1, mat); return api; },
-        petal(pos, rot, w, h, cup, curl, mat) { addItem(buildPetalGeo(w || 0.5, h || 0.75, cup, curl), pos, rot, 1, mat); return api; },
-        leaf(pos, rot, len, wid, bend, mat) { addItem(buildLeafGeo(len || 0.9, wid || 0.36, bend), pos, rot, 1, mat); return api; },
-        tube(pathPts, rStart, rEnd, mat, segs) { addItem(buildTubeGeo(pathPts, rStart || 0.08, rEnd, segs || 16), [0, 0, 0], [0, 0, 0], 1, mat); return api; },
-        mesh(geo, pos, rot, scale, mat) { addItem(geo, pos, rot, scale, mat); return api; },
         render(targetCtx) {
           const g = ensureGl(W, H);
           if (!g) return false;
@@ -761,34 +868,26 @@ function makeG3dApi(W, H, tSec, pVal) {
           g.enableVertexAttribArray(aNorm);
           g.enableVertexAttribArray(aUv);
 
-          const opaque = [];
-          const trans = [];
+          const opaque = [], trans = [];
           for (let i = 0; i < items.length; i++) {
             const alpha = items[i].mat.alpha !== undefined ? items[i].mat.alpha : 1.0;
             if (alpha < 0.99) trans.push(items[i]); else opaque.push(items[i]);
           }
           if (trans.length > 1) {
             trans.sort((a, b) => {
-              const da = Math.hypot(a.pos[0] - eye[0], a.pos[1] - eye[1], a.pos[2] - eye[2]);
-              const db = Math.hypot(b.pos[0] - eye[0], b.pos[1] - eye[1], b.pos[2] - eye[2]);
+              const da = Math.hypot(a.modelM[12] - eye[0], a.modelM[13] - eye[1], a.modelM[14] - eye[2]);
+              const db = Math.hypot(b.modelM[12] - eye[0], b.modelM[13] - eye[1], b.modelM[14] - eye[2]);
               return db - da;
             });
           }
 
           const drawList = (list, isTrans) => {
-            if (isTrans) {
-              g.enable(g.BLEND);
-              g.blendFunc(g.ONE, g.ONE_MINUS_SRC_ALPHA);
-              g.depthMask(false);
-            } else {
-              g.disable(g.BLEND);
-              g.depthMask(true);
-            }
+            if (isTrans) { g.enable(g.BLEND); g.blendFunc(g.ONE, g.ONE_MINUS_SRC_ALPHA); g.depthMask(false); }
+            else { g.disable(g.BLEND); g.depthMask(true); }
             for (let i = 0; i < list.length; i++) {
               const it = list[i], m = it.mat, geo = it.geo;
-              const modelM = m4Model(it.pos, it.rot, it.scale);
-              const normM = m3NormalFromM4(modelM);
-              g.uniformMatrix4fv(uLoc("uModel"), false, modelM);
+              const normM = m3NormalFromM4(it.modelM);
+              g.uniformMatrix4fv(uLoc("uModel"), false, it.modelM);
               g.uniformMatrix3fv(uLoc("uNormMat"), false, normM);
               const c1 = hexToVec3(m.color || "#E6ECF5");
               const c2 = m.color2 ? hexToVec3(m.color2) : c1;
@@ -796,11 +895,12 @@ function makeG3dApi(W, H, tSec, pVal) {
               g.uniform3fv(uLoc("uColor2"), new Float32Array(c2));
               g.uniform3fv(uLoc("uEmissive"), new Float32Array(m.emissive ? hexToVec3(m.emissive) : [0, 0, 0]));
               g.uniform3fv(uLoc("uRimColor"), new Float32Array(hexToVec3(m.rimColor || "#FFFFFF")));
-              g.uniform1f(uLoc("uRoughness"), m.roughness !== undefined ? m.roughness : 0.35);
-              g.uniform1f(uLoc("uMetalness"), m.metalness !== undefined ? m.metalness : 0.08);
-              g.uniform1f(uLoc("uRimPow"), m.rim !== undefined ? m.rim : 0.45);
+              g.uniform1f(uLoc("uRoughness"), m.roughness !== undefined ? m.roughness : 0.42);
+              g.uniform1f(uLoc("uMetalness"), m.metalness !== undefined ? m.metalness : 0.0);
+              g.uniform1f(uLoc("uRimPow"), m.rim !== undefined ? m.rim : 0.35);
               g.uniform1f(uLoc("uSss"), m.sss !== undefined ? m.sss : 0.0);
               g.uniform1f(uLoc("uAlpha"), m.alpha !== undefined ? m.alpha : 1.0);
+              g.uniform1f(uLoc("uUnlit"), m.unlit ? 1.0 : 0.0);
 
               g.bindBuffer(g.ARRAY_BUFFER, glBufPos);
               g.bufferData(g.ARRAY_BUFFER, new Float32Array(geo.pos), g.STREAM_DRAW);
@@ -827,11 +927,133 @@ function makeG3dApi(W, H, tSec, pVal) {
           if (targetCtx) targetCtx.drawImage(glCanvas, 0, 0, W, H);
           return true;
         }
-      };
-      return api;
+      });
+      return sceneApi;
     },
 
-    // Real-Time GPU GLSL Fragment Shader / 3D Raymarching Runner
+    // Articulated Stylized 3D Character Builder (Pixar/Nintendo proportions + blinking eyes + limb poses!)
+    stylizedCharacter(parentNode, cfg) {
+      const c = cfg || {};
+      const skin = c.skinColor || "#F7C8A6";
+      const shirt = c.shirtColor || "#F4F6F9";
+      const overalls = c.overallColor || "#2B8A56";
+      const hair = c.hairColor || "#3D2A22";
+      const hatCol = c.hatColor || "#E6B85C";
+      const bootCol = c.bootColor || "#5C3D2E";
+      const eyeCol = c.eyeColor || "#2A3E52";
+      const pose = c.pose || "idle"; // "idle" | "wave" | "walk" | "jump" | "joy"
+      const headYaw = c.headYaw || 0;
+      const headPitch = c.headPitch || 0;
+      const headRoll = c.headRoll || 0;
+      const blink = c.blink !== undefined ? c.blink : ((tSec % 3.4) > 3.24 ? 1 : 0);
+
+      let bounceY = Math.sin(tSec * 3.2) * 0.03;
+      let leanX = 0.04;
+      let lLegA = 0, rLegA = 0, lArmX = 0.15, lArmZ = 0.24, rArmX = 0.15, rArmZ = -0.24;
+
+      if (pose === "walk") {
+        const cyc = tSec * 7.2;
+        bounceY = Math.abs(Math.sin(cyc)) * 0.08;
+        leanX = 0.12;
+        lLegA = Math.sin(cyc) * 0.55;
+        rLegA = -Math.sin(cyc) * 0.55;
+        lArmX = -Math.sin(cyc) * 0.48;
+        rArmX = Math.sin(cyc) * 0.48;
+      } else if (pose === "wave") {
+        bounceY = Math.sin(tSec * 4.0) * 0.04;
+        rArmX = -0.35;
+        rArmZ = -2.35 + Math.sin(tSec * 9.0) * 0.35;
+      } else if (pose === "jump" || pose === "joy") {
+        const j = Math.abs(Math.sin(tSec * 5.2));
+        bounceY = j * 0.26;
+        leanX = -0.06 * j;
+        lArmZ = 2.25 + j * 0.35;
+        rArmZ = -2.25 - j * 0.35;
+        lLegA = -0.22 * j;
+        rLegA = 0.22 * j;
+      }
+
+      const root = parentNode.node({ pos: c.pos || [0, 0, 0], rot: c.rot || [0, 0, 0], scale: c.scale !== undefined ? c.scale : 1 });
+      if (c.shadow !== false) {
+        root.shadow([0, 0.004, 0], 0.54 * (1 - bounceY * 0.5), 0.46 * (1 - bounceY * 0.5), 0.32);
+      }
+
+      // Hips & Legs
+      const hips = root.node({ pos: [0, 0.44 + bounceY, 0] });
+      [-1, 1].forEach((side) => {
+        const legAng = side < 0 ? lLegA : rLegA;
+        const hipJoint = hips.node({ pos: [side * 0.16, 0.0, 0], rot: [legAng, 0, 0] });
+        hipJoint.capsule([0, -0.18, 0], 0.095, 0.24, [0, 0, 0], { color: overalls, roughness: 0.62 });
+        hipJoint.ellipsoid([0, -0.36, 0.05], [0.115, 0.075, 0.165], [0, 0, 0], { color: bootCol, roughness: 0.45 });
+      });
+
+      // Torso + Overalls + Backpack
+      const torso = hips.node({ pos: [0, 0.24, 0], rot: [leanX, 0, 0] });
+      torso.roundBox([0, 0.02, 0], [0.52, 0.52, 0.38], 0.18, [0, 0, 0], { color: shirt, roughness: 0.65 });
+      torso.roundBox([0, -0.05, 0.01], [0.54, 0.38, 0.40], 0.16, [0, 0, 0], { color: overalls, roughness: 0.62 });
+      // Overall straps & brass buttons
+      [-1, 1].forEach((s) => {
+        torso.box([s * 0.14, 0.18, 0.18], [0.06, 0.18, 0.04], [0, 0, 0], { color: overalls, roughness: 0.6 });
+        torso.sphere([s * 0.14, 0.11, 0.205], 0.026, { color: "#F5C85C", metalness: 0.85, roughness: 0.2 });
+      });
+      if (c.backpack !== false) {
+        torso.roundBox([0, 0.04, -0.24], [0.36, 0.38, 0.16], 0.07, [0, 0, 0], { color: "#C86D44", roughness: 0.58 });
+      }
+
+      // Articulated Arms + Hands
+      [-1, 1].forEach((side) => {
+        const ax = side < 0 ? lArmX : rArmX;
+        const az = side < 0 ? lArmZ : rArmZ;
+        const shoulder = torso.node({ pos: [side * 0.31, 0.18, 0], rot: [ax, 0, az] });
+        shoulder.capsule([0, -0.17, 0], 0.078, 0.24, [0, 0, 0], { color: shirt, roughness: 0.62 });
+        shoulder.sphere([0, -0.34, 0], 0.082, { color: skin, roughness: 0.48, sss: 0.25 });
+      });
+
+      // Head + Expressive Eyes + Hair / Sunhat / Sprout
+      const head = torso.node({ pos: [0, 0.54, 0.02], rot: [headPitch, headYaw, headRoll] });
+      head.ellipsoid([0, 0.02, 0], [0.36, 0.34, 0.34], [0, 0, 0], { color: skin, roughness: 0.46, sss: 0.30 }, 32);
+
+      // Ears
+      [-1, 1].forEach((s) => {
+        head.sphere([s * 0.35, 0.0, -0.02], 0.075, { color: skin, roughness: 0.48, sss: 0.25 });
+      });
+
+      // Cute Button Nose & Rosy Cheeks
+      head.ellipsoid([0, -0.02, 0.34], [0.052, 0.042, 0.048], [0, 0, 0], { color: "#E8A482", roughness: 0.42, sss: 0.35 });
+      [-1, 1].forEach((s) => {
+        head.ellipsoid([s * 0.20, -0.07, 0.28], [0.068, 0.042, 0.03], [0, s * 0.45, 0], { color: "#FF8496", roughness: 0.55, sss: 0.3 });
+      });
+
+      // Smiling Mouth
+      head.torus([0, -0.11, 0.30], 0.055, 0.016, [0.25, 0, Math.PI], { color: "#A83E4C", roughness: 0.4 }, 20, 10);
+
+      // 3D Layered Eyes (White Sclera + Iris + Pupil + Glossy Specular Catchlight + Eyelid Blink)
+      const eyeOpenY = lerpNum(1.0, 0.08, clampNum(blink, 0, 1));
+      [-1, 1].forEach((s) => {
+        const ex = s * 0.135, ey = 0.045, ez = 0.295;
+        head.ellipsoid([ex, ey, ez], [0.072, 0.082 * eyeOpenY, 0.042], [0, s * 0.22, 0], { color: "#FFFFFF", roughness: 0.12 });
+        if (eyeOpenY > 0.25) {
+          head.ellipsoid([ex + s * 0.008, ey, ez + 0.026], [0.046, 0.056 * eyeOpenY, 0.026], [0, s * 0.22, 0], { color: eyeCol, roughness: 0.10 });
+          head.sphere([ex + s * 0.022, ey + 0.022, ez + 0.044], 0.016, { color: "#FFFFFF", unlit: true });
+        }
+      });
+
+      // Hair Cap + Hat or Cute Botanical Sprout
+      head.ellipsoid([0, 0.13, -0.04], [0.37, 0.26, 0.36], [-0.15, 0, 0], { color: hair, roughness: 0.72 });
+      if (c.hat !== false) {
+        head.cylinder([0, 0.26, -0.02], 0.56, 0.52, 0.035, [-0.12, 0, 0], { color: hatCol, roughness: 0.65 }, 32);
+        head.ellipsoid([0, 0.32, -0.02], [0.33, 0.18, 0.33], [-0.12, 0, 0], { color: hatCol, roughness: 0.62 }, 28);
+        head.torus([0, 0.285, -0.02], 0.335, 0.022, [Math.PI * 0.5 - 0.12, 0, 0], { color: overalls, roughness: 0.55 }, 32, 10);
+      } else {
+        // Cute living sprout on top of head!
+        head.cylinder([0, 0.42, 0], 0.02, 0.015, 0.18, [0, 0, 0], { color: "#2B9B5E", roughness: 0.4 });
+        head.leaf([0, 0.50, 0], [0.3, 0.4, 0], 0.24, 0.12, 0.05, { color: "#34C759", sss: 0.3 });
+        head.leaf([0, 0.50, 0], [0.3, -2.6, 0], 0.22, 0.11, 0.05, { color: "#52D676", sss: 0.3 });
+      }
+
+      return { root, hips, torso, head };
+    },
+
     shader(targetCtx, fragCode, uniforms) {
       const g = ensureGl(W, H);
       if (!g) return false;
@@ -880,10 +1102,11 @@ function makeG3dApi(W, H, tSec, pVal) {
       if (targetCtx) targetCtx.drawImage(glCanvas, 0, 0, W, H);
       return true;
     }
-  });
+  };
+  return Object.freeze(g3dObj);
 }
 
-// Software Micro 3D Engine (d3) — Tetap tersedia untuk Stylized 2D/3D & Fallback!
+// Software Micro 3D Engine (d3) — Fallback
 const d3 = Object.freeze({
   rotX(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0], v[1]*c - v[2]*s, v[1]*s + v[2]*c]; },
   rotY(v, a) { const c = Math.cos(a), s = Math.sin(a); return [v[0]*c + v[2]*s, v[1], -v[0]*s + v[2]*c]; },
@@ -909,21 +1132,15 @@ const d3 = Object.freeze({
   createScene(eye, target, fovRad, W, H, cyRatio) {
     const proj = d3.camera(eye, target, fovRad, W, H, cyRatio);
     const focal = (Math.min(W, H) * 0.9) / Math.tan((fovRad || 0.72) * 0.5);
-    const lKey = d3.norm([0.58, 0.80, 0.44]);
-    const lFill = d3.norm([-0.72, 0.24, -0.35]);
-    const lRim = d3.norm([-0.22, 0.58, -0.80]);
+    const lKey = d3.norm([0.58, 0.80, 0.44]), lFill = d3.norm([-0.72, 0.24, -0.35]), lRim = d3.norm([-0.22, 0.58, -0.80]);
     const q = [];
     const shade = (rgb, n, vDir, specPow, sssAmt) => {
       const dk = Math.max(0, d3.dot(n, lKey)), df = Math.max(0, d3.dot(n, lFill)), dr = Math.max(0, d3.dot(n, lRim));
       const fr = Math.pow(1 - Math.max(0, d3.dot(n, vDir)), 2.6);
       let sp = 0;
-      if (specPow > 0) {
-        const hv = d3.norm([lKey[0]+vDir[0], lKey[1]+vDir[1], lKey[2]+vDir[2]]);
-        sp = Math.pow(Math.max(0, d3.dot(n, hv)), specPow) * 0.30;
-      }
+      if (specPow > 0) { const hv = d3.norm([lKey[0]+vDir[0], lKey[1]+vDir[1], lKey[2]+vDir[2]]); sp = Math.pow(Math.max(0, d3.dot(n, hv)), specPow) * 0.30; }
       const sss = sssAmt ? Math.pow(Math.max(0, d3.dot([-lKey[0], -lKey[1], -lKey[2]], vDir)), 2) * sssAmt : 0;
-      const lit = 0.34 + dk * 0.70 + df * 0.16 + sss * 0.32;
-      const rim = (dr * 0.28 + fr * 0.26) * 0.24;
+      const lit = 0.34 + dk * 0.70 + df * 0.16 + sss * 0.32, rim = (dr * 0.28 + fr * 0.26) * 0.24;
       return [rgb[0]*lit + 255*sp + sss*65 + 170*rim, rgb[1]*lit + 248*sp + sss*18 + 225*rim, rgb[2]*lit + 240*sp + sss*28 + 210*rim];
     };
     const scene = {
@@ -931,84 +1148,27 @@ const d3 = Object.freeze({
       poly(verts, colHex, opts) {
         const o = opts || {}, n = verts.length, ps = [];
         let sz = 0, cx = 0, cy = 0, cz = 0;
-        for (let i = 0; i < n; i++) {
-          const pr = proj(verts[i]); if (!pr) return;
-          ps.push(pr); sz += pr[2]; cx += verts[i][0]; cy += verts[i][1]; cz += verts[i][2];
-        }
+        for (let i = 0; i < n; i++) { const pr = proj(verts[i]); if (!pr) return; ps.push(pr); sz += pr[2]; cx += verts[i][0]; cy += verts[i][1]; cz += verts[i][2]; }
         const ctr = [cx/n, cy/n, cz/n];
         let norm = d3.norm(d3.cross(d3.sub(verts[1], verts[0]), d3.sub(verts[2], verts[0])));
         const vDir = d3.norm(d3.sub(eye, ctr));
         if (d3.dot(norm, vDir) <= 0) { if (!o.twoSided) return; norm = [-norm[0], -norm[1], -norm[2]]; }
         const cA = shade(parseHexRGB(colHex, [220, 60, 85]), norm, vDir, o.spec || 18, o.sss || 0);
         const cB = o.col2 ? shade(parseHexRGB(o.col2, cA), norm, vDir, (o.spec || 18) * 1.15, (o.sss || 0) * 1.2) : null;
-        const edgeMul = o.edgeMul !== undefined ? o.edgeMul : 0.90;
-        q.push({
-          t: cB ? 3 : 0, z: sz/n + (o.zBias || 0), ps,
-          cA: rgbStr(cA, o.alpha), cB: cB ? rgbStr(cB, o.alpha) : null,
-          gA: o.gA || 0, gB: o.gB !== undefined ? o.gB : Math.min(2, n - 1),
-          st: rgbStr([cA[0]*edgeMul, cA[1]*edgeMul, cA[2]*edgeMul], o.edgeAlpha !== undefined ? o.edgeAlpha : (o.alpha === undefined ? 0.85 : o.alpha * 0.85))
-        });
+        q.push({ t: cB ? 3 : 0, z: sz/n + (o.zBias || 0), ps, cA: rgbStr(cA, o.alpha), cB: cB ? rgbStr(cB, o.alpha) : null, gA: o.gA || 0, gB: o.gB !== undefined ? o.gB : Math.min(2, n - 1), st: rgbStr(cA, o.alpha === undefined ? 0.85 : o.alpha * 0.85) });
       },
-      addOrganicPetal(origin, angY, baseRad, baseY, pW, pH, pitch, cup, curl, colBase, colTip, zBias) {
-        const local = [
-          [-pW*0.22,0,0],[pW*0.22,0,0],[pW*0.48,pH*0.36,-cup*0.80],[pW*0.52,pH*0.72,-cup*0.55],
-          [pW*0.30,pH*0.95,-cup*0.14+curl*0.9],[0,pH*1.03,-cup*0.06+curl*1.2],
-          [-pW*0.30,pH*0.95,-cup*0.14+curl*0.9],[-pW*0.52,pH*0.72,-cup*0.55],[-pW*0.48,pH*0.36,-cup*0.80]
-        ];
-        const world = local.map((pt) => {
-          let qv = d3.rotX(pt, pitch); qv = [qv[0], qv[1] + baseY, qv[2] + baseRad]; qv = d3.rotY(qv, angY);
-          return [origin[0] + qv[0], origin[1] + qv[1], origin[2] + qv[2]];
-        });
-        scene.poly(world, colBase, { col2: colTip, gA: 0, gB: 5, twoSided: true, spec: 26, sss: 0.36, zBias: zBias || 0, edgeAlpha: 0.30 });
-      },
-      addLathe(rings, sides, colBot, colTop, yOff, specPow, zBias) {
-        const rPts = [];
-        for (let r = 0; r < rings.length; r++) {
-          const rad = rings[r].r, y = rings[r].y + (yOff || 0), pts = [];
-          for (let i = 0; i < sides; i++) { const a = (i * Math.PI * 2) / sides; pts.push([Math.cos(a) * rad, y, Math.sin(a) * rad]); }
-          rPts.push(pts);
-        }
-        for (let r = 0; r < rings.length - 1; r++) {
-          for (let i = 0; i < sides; i++) {
-            const ni = (i + 1) % sides;
-            const v0 = rPts[r][i], v1 = rPts[r + 1][i], v2 = rPts[r + 1][ni], v3 = rPts[r][ni];
-            const polyVerts = rings[r].r < 0.001 ? [v0, v1, v2] : (rings[r + 1].r < 0.001 ? [v0, v1, v3] : [v0, v1, v2, v3]);
-            scene.poly(polyVerts, colBot, { col2: colTop, gA: 0, gB: 1, twoSided: false, spec: specPow || 16, zBias: zBias || 0, edgeMul: 0.96, edgeAlpha: 0.92 });
-          }
-        }
-      },
-      line(a, b, colStr, wPx) {
-        const pa = proj(a), pb = proj(b); if (!pa || !pb) return;
-        q.push({ t: 1, z: (pa[2]+pb[2])*0.5, pa, pb, col: colStr, w: wPx || 2 });
-      },
-      orb(pt, rWorld, colHex, alpha) {
-        const pr = proj(pt); if (!pr) return;
-        const rPx = (rWorld * focal) / pr[2]; if (rPx < 0.6) return;
-        q.push({ t: 2, z: pr[2], x: pr[0], y: pr[1], r: rPx, rgb: parseHexRGB(colHex, [255, 224, 155]), a: alpha === undefined ? 0.85 : alpha });
-      },
+      line(a, b, colStr, wPx) { const pa = proj(a), pb = proj(b); if (!pa || !pb) return; q.push({ t: 1, z: (pa[2]+pb[2])*0.5, pa, pb, col: colStr, w: wPx || 2 }); },
+      orb(pt, rWorld, colHex, alpha) { const pr = proj(pt); if (!pr) return; const rPx = (rWorld * focal) / pr[2]; if (rPx < 0.6) return; q.push({ t: 2, z: pr[2], x: pr[0], y: pr[1], r: rPx, rgb: parseHexRGB(colHex, [255, 224, 155]), a: alpha === undefined ? 0.85 : alpha }); },
       render(c, S) {
-        q.sort((a, b) => b.z - a.z);
-        c.save(); c.lineJoin = "round"; c.lineCap = "round";
+        q.sort((a, b) => b.z - a.z); c.save(); c.lineJoin = "round"; c.lineCap = "round";
         for (let i = 0; i < q.length; i++) {
           const it = q[i];
           if (it.t === 0 || it.t === 3) {
             c.beginPath(); c.moveTo(it.ps[0][0], it.ps[0][1]);
             for (let k = 1; k < it.ps.length; k++) c.lineTo(it.ps[k][0], it.ps[k][1]);
-            c.closePath();
-            if (it.t === 3) {
-              const pA = it.ps[it.gA], pB = it.ps[it.gB];
-              const g = c.createLinearGradient(pA[0], pA[1], pB[0], pB[1]);
-              g.addColorStop(0, it.cA); g.addColorStop(1, it.cB); c.fillStyle = g;
-            } else c.fillStyle = it.cA;
-            c.fill(); c.strokeStyle = it.st; c.lineWidth = Math.max(0.55, 0.8 * S); c.stroke();
-          } else if (it.t === 1) {
-            c.strokeStyle = it.col; c.lineWidth = it.w; c.beginPath(); c.moveTo(it.pa[0], it.pa[1]); c.lineTo(it.pb[0], it.pb[1]); c.stroke();
-          } else {
-            const g = c.createRadialGradient(it.x, it.y, 0, it.x, it.y, it.r * 2.8);
-            g.addColorStop(0, rgbStr([255, 252, 240], it.a)); g.addColorStop(0.28, rgbStr(it.rgb, it.a * 0.72));
-            g.addColorStop(0.65, rgbStr(it.rgb, it.a * 0.16)); g.addColorStop(1, rgbStr(it.rgb, 0));
-            c.fillStyle = g; c.beginPath(); c.arc(it.x, it.y, it.r * 2.8, 0, Math.PI * 2); c.fill();
-          }
+            c.closePath(); c.fillStyle = it.cA; c.fill(); c.strokeStyle = it.st; c.lineWidth = Math.max(0.55, 0.8 * S); c.stroke();
+          } else if (it.t === 1) { c.strokeStyle = it.col; c.lineWidth = it.w; c.beginPath(); c.moveTo(it.pa[0], it.pa[1]); c.lineTo(it.pb[0], it.pb[1]); c.stroke(); }
+          else { const g = c.createRadialGradient(it.x, it.y, 0, it.x, it.y, it.r * 2.8); g.addColorStop(0, rgbStr([255, 252, 240], it.a)); g.addColorStop(1, rgbStr(it.rgb, 0)); c.fillStyle = g; c.beginPath(); c.arc(it.x, it.y, it.r * 2.8, 0, Math.PI * 2); c.fill(); }
         }
         c.restore();
       }
