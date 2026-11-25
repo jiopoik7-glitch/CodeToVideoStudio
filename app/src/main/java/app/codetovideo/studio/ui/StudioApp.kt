@@ -1157,7 +1157,7 @@ private fun TopGlassHeader(
             ) {
                 Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
                 Spacer(Modifier.width(5.dp))
-                Text("v0.6", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("v0.6.1", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
@@ -1165,11 +1165,14 @@ private fun TopGlassHeader(
 }
 
 @Composable
-private fun PageColumn(content: @Composable ColumnScope.() -> Unit) {
+private fun PageColumn(
+    scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
+    content: @Composable ColumnScope.() -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         content = content
@@ -1428,7 +1431,13 @@ private fun RenderScreen(
     onRender: () -> Unit,
     onCancel: () -> Unit
 ) {
-    var previewFrame by remember { mutableIntStateOf(0) }
+    var previewFrame by remember(project.projectId) {
+        mutableIntStateOf(project.renderSettings.fps.coerceIn(0, (project.renderSettings.totalFrames() - 1).coerceAtLeast(0)))
+    }
+    val renderScroll = rememberScrollState()
+    LaunchedEffect(isRendering) {
+        if (isRendering) renderScroll.animateScrollTo(0)
+    }
     var previewExpanded by remember { mutableStateOf(false) }
     var showAudition by remember { mutableStateOf(false) }
     val previewHeight by animateDpAsState(if (previewExpanded) 480.dp else 270.dp, spring(0.75f, 380f), label = "prev_h")
@@ -1452,7 +1461,7 @@ private fun RenderScreen(
     val speedFps = if (isRendering && renderDone > 1 && elapsedSec > 0.2) (renderDone / elapsedSec) else 0.0
     val etaSec = if (speedFps > 0.1 && renderTotal > renderDone) ((renderTotal - renderDone) / speedFps).roundToInt() else 0
 
-    PageColumn {
+    PageColumn(scrollState = renderScroll) {
         SectionHeader("Render Studio", "Live Preview · Real Studio SFX + Voiceover AAC MP4", pal)
 
         GlassPanel(pal) {
@@ -1495,7 +1504,8 @@ private fun RenderScreen(
                     ) {
                         Box(Modifier.size(7.dp).background(Color(0xFFFF453A), CircleShape))
                         Spacer(Modifier.width(6.dp))
-                        val hudTxt = if (speedFps > 0.1) "LIVE · $pct% · %.1f fps · ETA ${etaSec}s".format(speedFps) else "LIVE · $pct%"
+                        val fpsTxt = String.format(java.util.Locale.US, "%.1f", speedFps)
+                        val hudTxt = if (speedFps > 0.1) "LIVE · $pct% · $fpsTxt fps · ETA ${etaSec}s" else "LIVE · $pct%"
                         Text(hudTxt, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     }
                     Box(

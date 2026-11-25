@@ -162,7 +162,6 @@ object ProceduralAudioEngine {
         }
 
         // 4. Combine Ambience (with smooth Auto-Ducking under Voiceover) + SFX + Reverb + Voiceover
-        val combinedDry = FloatArray(totalFrames * CHANNELS)
         var duckEnv = 0f
         for (i in 0 until totalFrames) {
             val base = i * CHANNELS
@@ -172,11 +171,11 @@ object ProceduralAudioEngine {
                 duckEnv += coeff * (voLvl - duckEnv)
                 1f - (duckEnv * 4.2f).coerceIn(0f, 0.72f)
             } else 1f
-            combinedDry[base] = ambDry[base] * duckMult + sfxDry[base]
-            combinedDry[base + 1] = ambDry[base + 1] * duckMult + sfxDry[base + 1]
+            ambDry[base] = ambDry[base] * duckMult + sfxDry[base]
+            ambDry[base + 1] = ambDry[base + 1] * duckMult + sfxDry[base + 1]
         }
 
-        val pcm = masterToPcm16(combinedDry, revSend, voiceoverMix, totalFrames, voiceoverGain, true)
+        val pcm = masterToPcm16(ambDry, revSend, voiceoverMix, totalFrames, voiceoverGain, true)
         return encodePcmToAac(pcm)
     }
 

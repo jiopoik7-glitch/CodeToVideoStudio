@@ -6,16 +6,21 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import java.util.concurrent.Executors
 
-/** Plays real studio SFX WAV previews instantly in-app on a background thread. */
+/** Thread-safe in-app SFX audition player. */
 object AudioAuditionPlayer {
     private val executor = Executors.newSingleThreadExecutor()
-    @Volatile private var activeTrack: AudioTrack? = null
+    private var activeTrack: AudioTrack? = null
 
     fun play(context: Context, sfx: String, pitch: Float = 1.0f) {
-        runCatching { activeTrack?.stop(); activeTrack?.release(); activeTrack = null }
+        val appCtx = context.applicationContext
         executor.execute {
             runCatching {
-                val pcm = ProceduralAudioEngine.synthesizeSingleSfxPcm(context, sfx, pitch)
+                activeTrack?.stop()
+                activeTrack?.release()
+                activeTrack = null
+            }
+            runCatching {
+                val pcm = ProceduralAudioEngine.synthesizeSingleSfxPcm(appCtx, sfx, pitch)
                 val track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
