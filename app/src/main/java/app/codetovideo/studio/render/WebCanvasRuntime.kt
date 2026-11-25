@@ -2,7 +2,6 @@ package app.codetovideo.studio.render
 
 import android.content.Context
 import android.graphics.Color
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebResourceRequest
@@ -19,7 +18,7 @@ import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
-/** Local, offline-only Canvas worker runtime. User code never receives the native bridge. */
+/** Local, offline-only Canvas worker runtime with live export preview support. */
 class WebCanvasRuntime(private val context: Context) {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var webView: WebView? = null
@@ -42,7 +41,7 @@ class WebCanvasRuntime(private val context: Context) {
             .addPathHandler("/assets/", SecureStudioAssetHandler(context))
             .build()
         return WebView(context).apply {
-            setBackgroundColor(Color.rgb(9, 13, 25))
+            setBackgroundColor(Color.rgb(8, 11, 18))
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = false
             settings.allowFileAccess = false
@@ -98,7 +97,7 @@ class WebCanvasRuntime(private val context: Context) {
         val view = webView ?: return
         val settings = project.renderSettings
         val (width, height) = settings.dimensions()
-        val payload = runCatching { framePayload(project, frame, width, height, "preview", "preview") }
+        val payload = runCatching { framePayload(project, frame, width, height, "preview", "preview", false) }
             .getOrElse { error ->
                 val message = JSONObject.quote(error.message ?: "Metadata proyek tidak valid.")
                 main.post { if (ready) view.evaluateJavascript("window.showHostError && window.showHostError($message)", null) }
@@ -108,11 +107,11 @@ class WebCanvasRuntime(private val context: Context) {
         main.post { if (ready) view.evaluateJavascript(script, null) }
     }
 
-    fun requestExportFrame(project: StudioProject, frame: Int): CompletableFuture<ByteArray> {
+    fun requestExportFrame(project: StudioProject, frame: Int, livePreview: Boolean = false): CompletableFuture<ByteArray> {
         val result = CompletableFuture<ByteArray>()
         val view = webView
         if (!ready || !exportSupported || view == null) {
-            result.completeExceptionally(IllegalStateException("WebView/OffscreenCanvas/ArrayBuffer belum didukung. Perbarui Android System WebView."))
+            result.completeExceptionally(IllegalStateException("WebView/OffscreenCanvas/ArrayBuffer belum didukung."))
             return result
         }
         val settings = project.renderSettings
@@ -125,7 +124,7 @@ class WebCanvasRuntime(private val context: Context) {
             }
             pending = PendingFrame(frame, token, result)
         }
-        val payload = framePayload(project, frame, width, height, "export", token)
+        val payload = framePayload(project, frame, width, height, "export", token, livePreview)
         main.post {
             if (!ready) {
                 clearPending(IllegalStateException("Web runtime belum siap."))
@@ -185,7 +184,7 @@ class WebCanvasRuntime(private val context: Context) {
         current?.future?.completeExceptionally(error)
     }
 
-    private fun framePayload(project: StudioProject, frame: Int, width: Int, height: Int, mode: String, token: String): String {
+    private fun framePayload(project: StudioProject, frame: Int, width: Int, height: Int, mode: String, token: String, livePreview: Boolean): String {
         val meta = ProjectMetadataParser.parse(project.sourceBody)
         val props = JSONObject()
         meta.props.forEach { prop ->
@@ -209,6 +208,7 @@ class WebCanvasRuntime(private val context: Context) {
             put("props", props)
             put("mode", mode)
             put("token", token)
+            put("livePreview", livePreview)
         }.toString()
     }
 }

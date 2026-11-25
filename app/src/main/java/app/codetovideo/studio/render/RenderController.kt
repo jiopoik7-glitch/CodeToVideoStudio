@@ -48,13 +48,23 @@ class RenderController(private val context: Context, private val runtime: WebCan
                 val (width, height) = settings.dimensions()
                 val meta = ProjectMetadataParser.parse(project.sourceBody)
 
-                val wantsAudio = settings.includeAudio && (meta.audio.cues.isNotEmpty() || meta.audio.ambience != "none")
+                val wantsAudio = settings.includeAudio && (
+                    meta.audio.cues.isNotEmpty() ||
+                    meta.audio.ambience != "none" ||
+                    settings.voiceoverUri.isNotBlank()
+                )
                 val encodedAudio = if (wantsAudio) {
                     runCatching {
                         ProceduralAudioEngine.synthesizeAndEncode(
+                            context = context,
                             durationSeconds = settings.durationSeconds,
                             seed = project.seed,
-                            config = meta.audio
+                            config = meta.audio,
+                            sfxMasterGain = settings.sfxVolume,
+                            ambienceMasterGain = settings.ambienceVolume,
+                            voiceoverUri = settings.voiceoverUri,
+                            voiceoverGain = settings.voiceoverVolume,
+                            autoDucking = settings.autoDucking
                         )
                     }.getOrNull()
                 } else null
@@ -83,9 +93,11 @@ class RenderController(private val context: Context, private val runtime: WebCan
                 encoder = activeEncoder
 
                 val total = settings.totalFrames()
+                val previewStep = if (settings.fps >= 60) 3 else 2
                 for (frame in 0 until total) {
                     check(!cancelled.get()) { "Render dibatalkan." }
-                    val rgba = runtime.requestExportFrame(project, frame).get(20, TimeUnit.SECONDS)
+                    val showLive = (frame == 0 || frame == total - 1 || frame % previewStep == 0)
+                    val rgba = runtime.requestExportFrame(project, frame, showLive).get(20, TimeUnit.SECONDS)
                     check(rgba.size == width * height * 4) { "Ukuran payload frame $frame tidak valid." }
                     activeEncoder.writeFrame(frame, rgba)
                     val completed = frame + 1

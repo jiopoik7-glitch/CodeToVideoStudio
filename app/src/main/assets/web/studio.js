@@ -9,6 +9,17 @@
   let workerSupported = typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' &&
     typeof ImageData !== 'undefined';
 
+  function drawBitmap(image, width, height) {
+    if (!image) return;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    previewContext.clearRect(0, 0, canvas.width, canvas.height);
+    previewContext.drawImage(image, 0, 0);
+    image.close?.();
+  }
+
   function launchWorker() {
     if (!workerSupported) return;
     try {
@@ -18,13 +29,12 @@
         if (data.type === 'previewFrame' && data.image) {
           if (previewWatchdog) clearTimeout(previewWatchdog);
           previewWatchdog = null;
-          canvas.width = data.width;
-          canvas.height = data.height;
-          previewContext.clearRect(0, 0, canvas.width, canvas.height);
-          previewContext.drawImage(data.image, 0, 0);
-          data.image.close?.();
+          drawBitmap(data.image, data.width, data.height);
           errorBox.hidden = true;
         } else if (data.type === 'frameBuffer') {
+          if (data.previewImage) {
+            drawBitmap(data.previewImage, data.width, data.height);
+          }
           if (!window.studioNative || !data.buffer) {
             showError('Native ArrayBuffer bridge is not available.');
             return;
@@ -37,7 +47,7 @@
             window.studioNative.postMessage(JSON.stringify({ type: 'error', frame: data.frame, token: data.token, message: String(data.message || 'Worker error').slice(0, 240) }));
           }
         } else if (data.type === 'ready') {
-          badge.textContent = 'OFFSCREEN CANVAS READY';
+          badge.textContent = 'LIVE ENGINE READY';
         }
       };
       worker.onerror = (event) => showError(event.message || 'Worker error.');

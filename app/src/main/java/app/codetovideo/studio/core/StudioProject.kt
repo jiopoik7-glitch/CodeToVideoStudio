@@ -9,7 +9,13 @@ data class RenderSettings(
     val fps: Int = 30,
     val durationSeconds: Int = 5,
     val quality: String = "high",
-    val includeAudio: Boolean = true
+    val includeAudio: Boolean = true,
+    val sfxVolume: Float = 1.0f,
+    val ambienceVolume: Float = 0.85f,
+    val voiceoverUri: String = "",
+    val voiceoverName: String = "",
+    val voiceoverVolume: Float = 1.0f,
+    val autoDucking: Boolean = true
 ) {
     fun dimensions(): Pair<Int, Int> {
         val long = longEdge.coerceIn(480, 2160)
@@ -36,7 +42,7 @@ data class StudioProject(
     val updatedAtEpochMs: Long = System.currentTimeMillis()
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
-        put("schemaVersion", 5)
+        put("schemaVersion", 6)
         put("projectId", projectId)
         put("name", name)
         put("sourceBody", sourceBody)
@@ -49,6 +55,12 @@ data class StudioProject(
             put("durationSeconds", renderSettings.durationSeconds)
             put("quality", renderSettings.quality)
             put("includeAudio", renderSettings.includeAudio)
+            put("sfxVolume", renderSettings.sfxVolume.toDouble())
+            put("ambienceVolume", renderSettings.ambienceVolume.toDouble())
+            put("voiceoverUri", renderSettings.voiceoverUri)
+            put("voiceoverName", renderSettings.voiceoverName)
+            put("voiceoverVolume", renderSettings.voiceoverVolume.toDouble())
+            put("autoDucking", renderSettings.autoDucking)
         })
         put("createdAtEpochMs", createdAtEpochMs)
         put("updatedAtEpochMs", updatedAtEpochMs)
@@ -77,7 +89,13 @@ data class StudioProject(
                     fps = settings.optInt("fps", 30).let { if (it in setOf(24, 30, 60)) it else 30 },
                     durationSeconds = settings.optInt("durationSeconds", 5).coerceIn(1, 60),
                     quality = settings.optString("quality", "high").let { if (it in setOf("low", "medium", "high", "ultra")) it else "high" },
-                    includeAudio = settings.optBoolean("includeAudio", true)
+                    includeAudio = settings.optBoolean("includeAudio", true),
+                    sfxVolume = settings.optDouble("sfxVolume", 1.0).toFloat().coerceIn(0f, 1.5f),
+                    ambienceVolume = settings.optDouble("ambienceVolume", 0.85).toFloat().coerceIn(0f, 1.5f),
+                    voiceoverUri = settings.optString("voiceoverUri", ""),
+                    voiceoverName = settings.optString("voiceoverName", ""),
+                    voiceoverVolume = settings.optDouble("voiceoverVolume", 1.0).toFloat().coerceIn(0f, 1.5f),
+                    autoDucking = settings.optBoolean("autoDucking", true)
                 ),
                 createdAtEpochMs = json.optLong("createdAtEpochMs", System.currentTimeMillis()),
                 updatedAtEpochMs = json.optLong("updatedAtEpochMs", System.currentTimeMillis())
@@ -88,12 +106,12 @@ data class StudioProject(
 
 const val DEFAULT_SOURCE = """/*<studio-meta>
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "title": "iOS 26 Liquid Glass Keynote",
   "defaultDurationSeconds": 5,
   "seed": 26,
   "props": [
-    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.5"},
+    {"key":"eyebrow","label":"Tag Atas","type":"text","default":"RENDER VIDEO CODE V0.6"},
     {"key":"title","label":"Judul Utama","type":"text","default":"Desain kaca yang"},
     {"key":"highlight","label":"Kata Aksen","type":"text","default":"mengalir."},
     {"key":"accent","label":"Warna Aksen","type":"color","default":"#DCE8F5"}
@@ -102,11 +120,11 @@ const val DEFAULT_SOURCE = """/*<studio-meta>
     "ambience": "keynote_pulse",
     "ambienceVolume": 0.20,
     "cues": [
-      {"p": 0.01, "sfx": "air_whoosh", "gain": 0.72},
-      {"p": 0.22, "sfx": "felt_pluck", "gain": 0.78, "pitch": 1.0},
-      {"p": 0.40, "sfx": "felt_pluck", "gain": 0.78, "pitch": 1.15},
-      {"p": 0.62, "sfx": "tactile_tick", "gain": 0.68, "pitch": 1.05},
-      {"p": 0.76, "sfx": "crystal_bloom", "gain": 0.88}
+      {"p": 0.01, "sfx": "air_whoosh", "gain": 0.80},
+      {"p": 0.22, "sfx": "felt_pluck", "gain": 0.82, "pitch": 1.0},
+      {"p": 0.40, "sfx": "glass_tap", "gain": 0.82, "pitch": 1.08},
+      {"p": 0.62, "sfx": "tactile_tick", "gain": 0.72, "pitch": 1.04},
+      {"p": 0.76, "sfx": "crystal_bloom", "gain": 0.90}
     ]
   }
 }
@@ -140,7 +158,7 @@ const pillP = fx.stagger(frame, 0, 4);
 ctx.save();
 ctx.globalAlpha = ui.clamp(pillP, 0, 1);
 ctx.translate(0, (1 - pillP) * 18 * S);
-ui.drawPill(ctx, pad, H * 0.14, String(P.eyebrow || "RENDER VIDEO CODE V0.5"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
+ui.drawPill(ctx, pad, H * 0.14, String(P.eyebrow || "RENDER VIDEO CODE V0.6"), "rgba(255,255,255,0.12)", "#F5F7FA", Math.max(12, Math.round(21 * S)));
 ctx.restore();
 
 const fSize = Math.round(80 * S);
@@ -150,8 +168,8 @@ const used = ui.drawRichText(ctx, [
 ], pad, H * 0.21, innerW, fSize, fSize * 1.18, "#FFFFFF", ui.seg(p, 0.05, 0.42), "left");
 
 const cards = [
-  { title: "Seamless Liquid Glass", sub: "Zero-seam optical sheen + chromatic rim", val: 0.96, lbl: "96%" },
-  { title: "32 Mastered DSP SFX", sub: "Stereo Reverb + Pink Noise + Felt Pluck", val: 1.00, lbl: "100%" }
+  { title: "Real Studio SFX Library", sub: "32 rekaman WAV asli + Voiceover Mixer", val: 0.96, lbl: "96%" },
+  { title: "Live Render Preview HUD", sub: "Pantau frame, FPS & ETA real-time", val: 1.00, lbl: "100%" }
 ];
 const cH = 176 * S;
 const cStart = H * 0.21 + used + 54 * S;
@@ -178,7 +196,6 @@ for (let i = 0; i < cards.length; i++) {
   ctx.restore();
 }
 
-// Secondary living spline footer card (prevents dead hold & fills 9:16!)
 const fCardY = cStart + 2 * (cH + 26 * S) + 12 * S;
 const fCardH = 220 * S;
 const fSp = fx.stagger(frame, 6, Math.round(fps * 0.16));

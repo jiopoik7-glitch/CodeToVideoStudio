@@ -1069,7 +1069,12 @@ function render(message) {
   } else {
     const pixels = ctx.getImageData(0, 0, W, H).data;
     const buffer = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
-    self.postMessage({ type: "frameBuffer", frame, token: message.token, buffer }, [buffer]);
+    if (message.livePreview) {
+      const previewImage = canvas.transferToImageBitmap();
+      self.postMessage({ type: "frameBuffer", frame, token: message.token, width: W, height: H, buffer, previewImage }, [buffer, previewImage]);
+    } else {
+      self.postMessage({ type: "frameBuffer", frame, token: message.token, buffer }, [buffer]);
+    }
   }
 }
 
