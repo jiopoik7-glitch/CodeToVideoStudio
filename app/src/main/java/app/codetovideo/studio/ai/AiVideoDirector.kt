@@ -84,7 +84,7 @@ object AiVideoDirector {
             appendLine("- Cerita / Naskah / Ide Pengguna:")
             appendLine(clean)
             appendLine()
-            appendLine("WAJIB awali kode dengan blok /*<studio-meta> ... </studio-meta>*/ valid schemaVersion 5,")
+            appendLine("WAJIB awali kode dengan blok /*<studio-meta> ... </studio-meta>*/ valid schemaVersion 21,")
             appendLine("set defaultDurationSeconds = $durationSeconds, dan sertakan konfigurasi audio (ambience + cues SFX yang sinkron dengan adegan).")
             appendLine("Kembalikan HANYA SATU blok kode JavaScript siap render tanpa teks penjelasan tambahan.")
         }
@@ -114,7 +114,7 @@ object AiVideoDirector {
             appendLine("PERMINTAAN REVISI PENGGUNA:")
             appendLine(clean)
             appendLine()
-            appendLine("Pertahankan elemen yang sudah bagus, terapkan revisi secara rapi & halus, tetap gunakan /*<studio-meta> ... </studio-meta>*/ valid schemaVersion 5 + audio cues.")
+            appendLine("Pertahankan elemen yang sudah bagus, terapkan revisi secara rapi & halus, tetap gunakan /*<studio-meta> ... </studio-meta>*/ valid schemaVersion 21 + audio cues.")
             appendLine("Kembalikan HANYA SATU blok kode JavaScript lengkap siap render.")
         }
 
@@ -169,17 +169,10 @@ object AiVideoDirector {
         }.getOrDefault("").take(15_000)
 
         return buildString {
-            appendLine("Kamu adalah Creative Coder & Motion Graphics Engineer profesional khusus untuk engine Code-to-Video Studio v0.5 (Deterministic Canvas 2D WebWorker Engine).")
-            appendLine("FORMAT WAJIB:")
-            appendLine("1. Kembalikan HANYA SATU blok kode JavaScript murni siap tempel (tanpa HTML, React, import, export).")
-            appendLine("2. WAJIB awali dengan blok metadata persis memakai tag /*<studio-meta> dan </studio-meta>*/ berisi JSON valid schemaVersion 5, title, defaultDurationSeconds, seed, props, dan audio (ambience, ambienceVolume, cues).")
-            appendLine("3. DILARANG menggunakan Math.random(), Date.now(), performance.now(), setTimeout, setInterval, requestAnimationFrame, window, document, fetch, atau Image.")
-            appendLine("4. Gunakan fungsi bawaan engine (ui, fx, cam, ease, rand, P, ctx, W, H, S, t, D, p, frame, fps) sesuai dokumentasi resmi di bawah, atau Canvas 2D prosedural murni yang ringan.")
-            appendLine("5. Hindari ctx.filter dan hindari ctx.shadowBlur di dalam loop agar render HP cepat dan anti-timeout.")
-            appendLine("6. Pastikan tidak ada radius/scale negatif atau NaN, semua teks memiliki word-wrap & safe area margin, dan tidak ada adegan diam membeku (zero static holds).")
+            appendLine(MasterPromptV21.buildCopyablePrompt())
             if (skillDoc.isNotBlank()) {
                 appendLine()
-                appendLine("=== DOKUMENTASI RESMI ENGINE (skill.md) ===")
+                appendLine("=== DOKUMENTASI LENGKAP ENGINE v2.1 (skill.md) ===")
                 appendLine(skillDoc)
             }
         }

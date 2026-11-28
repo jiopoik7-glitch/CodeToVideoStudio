@@ -683,74 +683,316 @@ function makeFxApi(W, H, S, t, frame, fps, rand, ui) {
   });
 }
 
-function ensureCanvas(width, height) {
+let __fontsLoaded = false;
+let __fontsLoadingPromise = null;
+const __mediaUrlCache = new Map();
+let __accumBuf = null;
+let __accumSize = 0;
+let __compiledCacheSource = null;
+let __compiledCacheFn = null;
+let __renderCancelToken = 0;
+let __hasWarm3dStarted = false;
+
+function yieldAnimationFrame() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
+async function preloadFontsOnce() {
+  if (__fontsLoaded) return true;
+  if (__fontsLoadingPromise) return __fontsLoadingPromise;
+  __fontsLoadingPromise = (async () => {
+    const specs = [
+      { family: "Plus Jakarta Sans", url: "/fonts/plus_jakarta_sans.ttf", weight: "100 900", style: "normal" },
+      { family: "Playfair Display", url: "/fonts/playfair_display.ttf", weight: "100 900", style: "normal" },
+      { family: "Playfair Display", url: "/fonts/playfair_display.ttf", weight: "100 900", style: "italic" },
+      { family: "Inter", url: "/fonts/inter.ttf", weight: "100 900", style: "normal" },
+      { family: "JetBrains Mono", url: "/fonts/jetbrains_mono.ttf", weight: "100 900", style: "normal" }
+    ];
+    const fontSet = (typeof document !== "undefined" && document.fonts) ? document.fonts : (typeof self !== "undefined" ? self.fonts : null);
+    if (typeof FontFace !== "undefined" && fontSet && typeof fetch === "function") {
+      await Promise.all(specs.map(async (sp) => {
+        try {
+          const res = await fetch(sp.url);
+          if (!res.ok) return;
+          const buf = await res.arrayBuffer();
+          const ff = new FontFace(sp.family, buf, { weight: sp.weight, style: sp.style });
+          const loaded = await ff.load();
+          fontSet.add(loaded);
+        } catch (_) {}
+      }));
+      try { await fontSet.ready; } catch (_) {}
+    }
+    __fontsLoaded = true;
+    return true;
+  })();
+  return __fontsLoadingPromise;
+}
+
+async function preloadMediaAssets(mediaList) {
+  if (!Array.isArray(mediaList) || !mediaList.length || typeof fetch !== "function") return;
+  await Promise.all(mediaList.map(async (item) => {
+    if (!item || !item.alias || !item.url) return;
+    const alias = String(item.alias).trim().toLowerCase();
+    const url = String(item.url);
+    if (__mediaUrlCache.get(alias) === url && __loadedMediaBitmaps.has(alias)) return;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const bmp = await createImageBitmap(blob);
+      const prev = __loadedMediaBitmaps.get(alias);
+      if (prev && typeof prev.close === "function") prev.close();
+      __loadedMediaBitmaps.set(alias, bmp);
+      __mediaUrlCache.set(alias, url);
+    } catch (_) {}
+  }));
+}
+
+function extractLineColumn(error) {
+  const stack = String(error?.stack || "");
+  const m = stack.match(/<anonymous>:(\d+):(\d+)/) || stack.match(/Function:(\d+):(\d+)/);
+  if (m) {
+    const rawLine = parseInt(m[1], 10);
+    const col = parseInt(m[2], 10);
+    return { line: Math.max(1, rawLine - 3), column: col };
+  }
+  return { line: null, column: null };
+}
+
+function ensureExportCanvas(width, height) {
   if (!canvas || width !== currentWidth || height !== currentHeight) {
-    canvas = new OffscreenCanvas(width, height);
-    ctx = canvas.getContext("2d", { alpha: true });
-    if (!ctx) throw new Error("OffscreenCanvas 2D context is not supported.");
+    canvas = createWorkCanvas(width, height);
+    ctx = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
+    if (!ctx) throw new Error("Canvas 2D context is not supported.");
     currentWidth = width;
     currentHeight = height;
   }
+  return { c: canvas, c2d: ctx };
 }
 
-function render(message) {
+function compileUserBody(sourceBody) {
+  if (__compiledCacheSource === sourceBody && __compiledCacheFn) {
+    return __compiledCacheFn;
+  }
+  const fn = new Function(
+    "ctx", "W", "H", "S", "t", "D", "p", "frame", "fps", "P", "ease", "rand",
+    "spring", "interpolate", "bezier", "cam", "ui", "fx", "d3", "g3d",
+    "studio3D", "rig2D", "world2D", "assets", "lerpNum", "clampNum",
+    "globalThis", "self", "fetch", "XMLHttpRequest", "WebSocket", "importScripts",
+    "indexedDB", "caches", "BroadcastChannel", "Worker", "WebAssembly", "setTimeout",
+    "setInterval", "requestAnimationFrame", "document", "window",
+    '"use strict";\n' + sourceBody
+  );
+  __compiledCacheSource = sourceBody;
+  __compiledCacheFn = fn;
+  return fn;
+}
+
+function executeSingleSampleOn(targetCanvas, targetCtx, body, message, W, H, frameFloat, fps, D, totalFrames, isExportMode) {
+  if (targetCanvas.width !== W || targetCanvas.height !== H) {
+    targetCanvas.width = W;
+    targetCanvas.height = H;
+  }
+  targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+  targetCtx.globalAlpha = 1;
+  targetCtx.globalCompositeOperation = "source-over";
+  targetCtx.shadowColor = "transparent";
+  targetCtx.shadowBlur = 0;
+  targetCtx.shadowOffsetX = 0;
+  targetCtx.shadowOffsetY = 0;
+  targetCtx.imageSmoothingEnabled = true;
+  targetCtx.imageSmoothingQuality = isExportMode ? "high" : "medium";
+  targetCtx.clearRect(0, 0, W, H);
+
+  const S = Math.min(W, H) / 1080;
+  const clampedFrame = clampNum(frameFloat, 0, Math.max(0, totalFrames - 1));
+  const t = clampedFrame / fps;
+  const p = clampedFrame / Math.max(totalFrames - 1, 1);
+  const P = Object.freeze(message.props || {});
+  const rand = (index) => seededRandom(message.seed | 0, index | 0);
+  const cam = makeCameraApi(W, H);
+
+  const baseUi = typeof enhanceProUi === "function" ? enhanceProUi(makeUiApi(S), W, H, S) : makeUiApi(S);
+  const ui = Object.freeze(Object.assign({}, baseUi, {
+    drawMagnifier(c, cx, cy, radius, opts) { return drawMagnifierCallout(c, W, H, S, baseUi, cx, cy, radius, opts); },
+    captions(c, cues, tSec, opts) { return drawViralCaptions(c, W, H, S, t, baseUi, cues, tSec, opts); }
+  }));
+
+  const baseFx = typeof enhanceProFx === "function" ? enhanceProFx(makeFxApi(W, H, S, t, clampedFrame, fps, rand, ui), W, H, S, t, clampedFrame, fps, rand, ui) : makeFxApi(W, H, S, t, clampedFrame, fps, rand, ui);
+  const optical = makeOpticalShaderApis(W, H, S, t, ui, isExportMode);
+  const swarmApi = makeSwarmApi(S, t);
+  const fx = Object.freeze(Object.assign({}, baseFx, {
+    glass: optical.glass,
+    shader: optical.shader,
+    swarm: swarmApi,
+    captions(c, cues, tSec, opts) { return drawViralCaptions(c, W, H, S, t, ui, cues, tSec, opts); }
+  }));
+
+  const g3d = makeG3dApi(W, H, t, p, rand, isExportMode);
+  const studio3D = makeStudio3DApi(W, H, t, p, clampedFrame, fps, rand, isExportMode);
+  const rig2D = makeRig2DApi(W, H, S, t, clampedFrame, fps, ui);
+  const world2D = makeWorld2DApi(W, H, S, t, rand);
+  const assets = makeAssetsApi(S, ui);
+
+  // Scoped deterministic Math.random so Three.js generateUUID & user scripts remain 100% deterministic
+  const origMathRandom = Math.random;
+  let detIdx = ((message.seed | 0) ^ (Math.round(clampedFrame * 100) * 2654435761)) | 0;
+  Math.random = () => {
+    detIdx = (detIdx + 1) | 0;
+    return seededRandom(message.seed | 0, detIdx);
+  };
+  try {
+    body(targetCtx, W, H, S, t, D, p, clampedFrame, fps, P, ease, rand, spring, interpolate, bezier, cam, ui, fx, d3, g3d, studio3D, rig2D, world2D, assets, lerpNum, clampNum);
+  } finally {
+    Math.random = origMathRandom;
+  }
+
+  // Automatic UI Subtitle Overlay if enabled in project settings
+  const subs = message.subtitles;
+  if (subs && subs.enabled && Array.isArray(subs.cues) && subs.cues.length > 0) {
+    drawViralCaptions(targetCtx, W, H, S, t, ui, subs.cues, t, {
+      preset: subs.preset || "pill_highlight",
+      accent: subs.accentColor || "#FF3B5C",
+      yRatio: subs.yRatio !== undefined ? subs.yRatio : 0.82
+    });
+  }
+}
+
+function validateMessage(message) {
   const W = message.W | 0, H = message.H | 0;
   const frame = message.frame | 0, fps = message.fps | 0;
   const D = Number(message.D), totalFrames = message.totalFrames | 0;
   if (W < 2 || H < 2 || W > 3840 || H > 3840 || W * H * 4 > 35_000_000) throw new Error("Output dimensions exceed the runtime safety limit.");
   if (![24, 30, 60].includes(fps) || totalFrames < 1 || totalFrames > 3600 || frame < 0 || frame >= totalFrames) throw new Error("Invalid frame settings.");
   if (typeof message.sourceBody !== "string" || message.sourceBody.length > 262144) throw new Error("Source body must be 256 KiB or smaller.");
-
-  ensureCanvas(W, H);
-  canvas.width = W; canvas.height = H;
-  ctx = canvas.getContext("2d", { alpha: true });
-  if (!ctx) throw new Error("Canvas 2D context could not be restored.");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.clearRect(0, 0, W, H);
-
-  const S = Math.min(W, H) / 1080;
-  const t = frame / fps;
-  const p = frame / Math.max(totalFrames - 1, 1);
-  const P = Object.freeze(message.props || {});
-  const rand = (index) => seededRandom(message.seed | 0, index | 0);
-  const isExportMode = (message.mode !== "preview");
-  const cam = makeCameraApi(W, H);
-  const ui = typeof enhanceProUi === "function" ? enhanceProUi(makeUiApi(S), W, H, S) : makeUiApi(S);
-  const fx = typeof enhanceProFx === "function" ? enhanceProFx(makeFxApi(W, H, S, t, frame, fps, rand, ui), W, H, S, t, frame, fps, rand, ui) : makeFxApi(W, H, S, t, frame, fps, rand, ui);
-  const g3d = makeG3dApi(W, H, t, p, rand, isExportMode);
-
-  const body = new Function(
-    "ctx", "W", "H", "S", "t", "D", "p", "frame", "fps", "P", "ease", "rand",
-    "spring", "interpolate", "bezier", "cam", "ui", "fx", "d3", "g3d",
-    "globalThis", "self", "fetch", "XMLHttpRequest", "WebSocket", "importScripts",
-    "indexedDB", "caches", "BroadcastChannel", "Worker", "WebAssembly", "setTimeout",
-    "setInterval", "requestAnimationFrame", "document", "window",
-    '"use strict";\n' + message.sourceBody
-  );
-  body(ctx, W, H, S, t, D, p, frame, fps, P, ease, rand, spring, interpolate, bezier, cam, ui, fx, d3, g3d);
-
-  if (message.mode === "preview") {
-    const bitmap = canvas.transferToImageBitmap();
-    self.postMessage({ type: "previewFrame", frame, width: W, height: H, image: bitmap }, [bitmap]);
-  } else {
-    const pixels = ctx.getImageData(0, 0, W, H).data;
-    const buffer = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
-    if (message.livePreview) {
-      const previewImage = canvas.transferToImageBitmap();
-      self.postMessage({ type: "frameBuffer", frame, token: message.token, width: W, height: H, buffer, previewImage }, [buffer, previewImage]);
-    } else {
-      self.postMessage({ type: "frameBuffer", frame, token: message.token, buffer }, [buffer]);
-    }
-  }
+  return { W, H, frame, fps, D, totalFrames };
 }
 
-self.onmessage = (event) => {
-  const message = event.data || {};
-  try { render(message); }
-  catch (error) {
-    self.postMessage({ type: "error", frame: message.frame, token: message.token, message: String(error?.message || error).slice(0, 240) });
+function scriptUses3d(sourceBody) {
+  return typeof sourceBody === "string" && (sourceBody.indexOf("g3d.") !== -1 || sourceBody.indexOf("studio3D.") !== -1 || sourceBody.indexOf("fx.glass.") !== -1);
+}
+
+const StudioEngine = {
+  async init(onProgress) {
+    if (typeof onProgress === "function") onProgress("Memuat Font Offline…");
+    await preloadFontsOnce();
+    if (typeof onProgress === "function") onProgress("Menyiapkan Engine 3D…");
+    ensureThreeLoaded();
+    await yieldAnimationFrame();
+    return {
+      fontsLoaded: __fontsLoaded,
+      threeLoaded: __threeReady,
+      softwareGpu: __gpuProfile.isSoftware,
+      gpuRenderer: __gpuProfile.renderer
+    };
+  },
+
+  needsWarmup(sourceBody) {
+    return !__hasWarm3dStarted && scriptUses3d(sourceBody);
+  },
+
+  getStatus() {
+    return {
+      fontsLoaded: __fontsLoaded,
+      threeLoaded: __threeReady,
+      softwareGpu: __gpuProfile.isSoftware,
+      lightPreview: shouldUseLightPreview(false),
+      gpuRenderer: __gpuProfile.renderer
+    };
+  },
+
+  cancel() {
+    __renderCancelToken++;
+  },
+
+  extractLineColumn,
+
+  async renderPreviewToCanvas(displayCanvas, message) {
+    const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const { W, H, frame, fps, D, totalFrames } = validateMessage(message);
+    await preloadFontsOnce();
+    ensureThreeLoaded();
+    await preloadMediaAssets(message.mediaAssets);
+
+    const body = compileUserBody(message.sourceBody);
+    const dCtx = displayCanvas.getContext("2d", { alpha: false });
+    if (!dCtx) throw new Error("Canvas 2D context tidak tersedia.");
+
+    const is3d = scriptUses3d(message.sourceBody);
+    const wasFirst3d = is3d && !__hasWarm3dStarted;
+    if (is3d) __hasWarm3dStarted = true;
+
+    executeSingleSampleOn(displayCanvas, dCtx, body, message, W, H, frame, fps, D, totalFrames, false);
+    const renderMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+    // Ignore one-time shader compile cost on the very first 3D frame when tracking slow frames
+    if (!wasFirst3d) {
+      recordPreviewRenderTime(renderMs);
+    }
+    return {
+      frame,
+      width: W,
+      height: H,
+      renderMs,
+      fontsLoaded: __fontsLoaded,
+      threeLoaded: __threeReady,
+      softwareGpu: __gpuProfile.isSoftware || shouldUseLightPreview(false)
+    };
+  },
+
+  async renderExportFrame(message) {
+    const myCancel = __renderCancelToken;
+    const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const { W, H, frame, fps, D, totalFrames } = validateMessage(message);
+    await preloadFontsOnce();
+    ensureThreeLoaded();
+    await preloadMediaAssets(message.mediaAssets);
+
+    const body = compileUserBody(message.sourceBody);
+    const { c: expCanvas, c2d: expCtx } = ensureExportCanvas(W, H);
+    const mbSamples = (message.motionBlurSamples === 4 ? 4 : message.motionBlurSamples === 2 ? 2 : 1);
+
+    if (mbSamples > 1 && frame > 0) {
+      const byteLen = W * H * 4;
+      if (!__accumBuf || __accumSize !== byteLen) {
+        __accumBuf = new Float32Array(byteLen);
+        __accumSize = byteLen;
+      } else {
+        __accumBuf.fill(0);
+      }
+      const shutterSpan = 0.5;
+      for (let s = 0; s < mbSamples; s++) {
+        if (myCancel !== __renderCancelToken) throw new Error("Render dibatalkan.");
+        if (s > 0) await yieldAnimationFrame();
+        const subFrame = Math.max(0, frame - (s / mbSamples) * shutterSpan);
+        executeSingleSampleOn(expCanvas, expCtx, body, message, W, H, subFrame, fps, D, totalFrames, true);
+        const px = expCtx.getImageData(0, 0, W, H).data;
+        for (let i = 0; i < byteLen; i++) __accumBuf[i] += px[i];
+      }
+      const out = new Uint8ClampedArray(byteLen);
+      const inv = 1 / mbSamples;
+      for (let i = 0; i < byteLen; i++) out[i] = Math.round(__accumBuf[i] * inv);
+      const renderMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+      return { frame, token: message.token, width: W, height: H, buffer: out.buffer, renderMs };
+    }
+
+    executeSingleSampleOn(expCanvas, expCtx, body, message, W, H, frame, fps, D, totalFrames, true);
+    const pixels = expCtx.getImageData(0, 0, W, H).data;
+    const buffer = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
+    const renderMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+    return { frame, token: message.token, width: W, height: H, buffer, renderMs };
   }
 };
 
-self.postMessage({ type: "ready" });
+if (typeof window !== "undefined") {
+  window.StudioEngine = StudioEngine;
+} else if (typeof globalThis !== "undefined") {
+  globalThis.StudioEngine = StudioEngine;
+}
+
+

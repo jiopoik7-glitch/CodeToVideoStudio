@@ -1,15 +1,62 @@
-'use strict';
-
-["fetch","XMLHttpRequest","WebSocket","importScripts","indexedDB","caches","BroadcastChannel","Worker","WebAssembly","setTimeout","setInterval","requestAnimationFrame"].forEach((k)=>{
-  try { Object.defineProperty(self, k, { value: undefined, writable: false, configurable: true }); }
-  catch (_) { try { self[k] = undefined; } catch (__) {} }
-});
-Math.random = () => { throw new Error("Math.random() is disabled; use rand(index)."); };
-
 let canvas = null;
 let ctx = null;
 let currentWidth = 0;
 let currentHeight = 0;
+
+function createWorkCanvas(w, h) {
+  const cw = Math.max(1, w | 0);
+  const ch = Math.max(1, h | 0);
+  if (typeof document !== "undefined" && typeof document.createElement === "function") {
+    const el = document.createElement("canvas");
+    el.width = cw;
+    el.height = ch;
+    return el;
+  }
+  if (typeof OffscreenCanvas !== "undefined") {
+    return new OffscreenCanvas(cw, ch);
+  }
+  throw new Error("Canvas is not available in this WebView runtime.");
+}
+
+const __gpuProfile = {
+  checked: false,
+  isSoftware: false,
+  renderer: "",
+  slowPreviewHits: 0
+};
+
+function detectGpuProfile(glCtx) {
+  if (!glCtx || __gpuProfile.checked) return __gpuProfile;
+  __gpuProfile.checked = true;
+  try {
+    let rendererStr = "";
+    const dbg = glCtx.getExtension("WEBGL_debug_renderer_info");
+    if (dbg) {
+      rendererStr = String(glCtx.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || "");
+    }
+    if (!rendererStr) {
+      rendererStr = String(glCtx.getParameter(glCtx.RENDERER) || "");
+    }
+    __gpuProfile.renderer = rendererStr;
+    __gpuProfile.isSoftware = /swiftshader|llvmpipe|softpipe|subzero|microsoft basic|angle.*warp|software/i.test(rendererStr);
+  } catch (_) {
+    __gpuProfile.isSoftware = false;
+  }
+  return __gpuProfile;
+}
+
+function recordPreviewRenderTime(ms) {
+  if (ms > 280) {
+    __gpuProfile.slowPreviewHits = Math.min(4, __gpuProfile.slowPreviewHits + 1);
+  } else if (ms < 120 && __gpuProfile.slowPreviewHits > 0) {
+    __gpuProfile.slowPreviewHits = Math.max(0, __gpuProfile.slowPreviewHits - 1);
+  }
+}
+
+function shouldUseLightPreview(isExportMode) {
+  if (isExportMode) return false;
+  return __gpuProfile.isSoftware || __gpuProfile.slowPreviewHits >= 2;
+}
 
 const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const lerpNum = (a, b, u) => a + (b - a) * u;

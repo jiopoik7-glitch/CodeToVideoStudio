@@ -3,6 +3,7 @@ package app.codetovideo.studio
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import app.codetovideo.studio.core.ProjectRepository
 import app.codetovideo.studio.render.RenderController
 import app.codetovideo.studio.render.WebCanvasRuntime
@@ -18,6 +19,7 @@ class MainActivity : ComponentActivity() {
         private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         projects = ProjectRepository(filesDir)
         canvasRuntime = WebCanvasRuntime(this)

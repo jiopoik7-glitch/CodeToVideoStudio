@@ -191,6 +191,7 @@ object ProceduralAudioEngine {
             renderAmbience(ambDry, revSend, totalFrames, dur.toDouble(), config.ambience, effAmbVol, rng)
         }
 
+        val impactMask = FloatArray(totalFrames)
         if (sfxMasterGain > 0.005f) {
             config.cues.forEachIndexed { idx, cue ->
                 val timeSec = if (cue.atProgress != null) cue.atProgress * dur.toDouble() else cue.atSeconds
@@ -198,6 +199,16 @@ object ProceduralAudioEngine {
                 if (startFrame in 0 until totalFrames) {
                     val pan = ((idx % 3) - 1) * 0.12f
                     val gain = (cue.gain * sfxMasterGain).coerceIn(0f, 1.5f)
+                    if (SfxCatalog.isImpactSfx(cue.sfx)) {
+                        val duckLen = (0.75 * SAMPLE_RATE).toInt()
+                        for (k in 0 until duckLen) {
+                            val idxF = startFrame + k
+                            if (idxF >= totalFrames) break
+                            val u = k.toFloat() / duckLen
+                            val env = if (u < 0.06f) u / 0.06f else (1f - (u - 0.06f) / 0.94f)
+                            impactMask[idxF] = max(impactMask[idxF], env.coerceIn(0f, 1f) * gain.coerceAtMost(1f))
+                        }
+                    }
                     val customOrAsset = loadExternalSfx(context, cue.sfx, wavCache)
                     if (customOrAsset != null) {
                         mixWavSample(sfxDry, revSend, totalFrames, startFrame, customOrAsset, gain, cue.pitch, pan, 0.14f)
@@ -209,15 +220,19 @@ object ProceduralAudioEngine {
             }
         }
 
-        // Combine Ambience (with smooth Auto-Ducking under Voiceover) + SFX in-place
+        // Combine Ambience with Dual-Trigger Smart Auto-Ducking (Voiceover + Cinema Impact)
         var duckEnv = 0f
         for (i in 0 until totalFrames) {
             val base = i * CHANNELS
-            val duckMult = if (voiceoverMix != null && autoDucking) {
-                val voLvl = (abs(voiceoverMix[base]) + abs(voiceoverMix[base + 1])) * 0.5f * voiceoverGain
-                val coeff = if (voLvl > duckEnv) 0.006f else 0.00018f
-                duckEnv += coeff * (voLvl - duckEnv)
-                1f - (duckEnv * 4.2f).coerceIn(0f, 0.72f)
+            val voTrig = if (voiceoverMix != null && autoDucking) {
+                (abs(voiceoverMix[base]) + abs(voiceoverMix[base + 1])) * 0.5f * voiceoverGain
+            } else 0f
+            val impTrig = if (autoDucking) impactMask[i] * 0.35f else 0f
+            val trig = max(voTrig, impTrig)
+            val duckMult = if (autoDucking && (voiceoverMix != null || impTrig > 0.001f || duckEnv > 0.001f)) {
+                val coeff = if (trig > duckEnv) 0.008f else 0.00022f
+                duckEnv += coeff * (trig - duckEnv)
+                1f - (duckEnv * 4.2f).coerceIn(0f, 0.74f)
             } else 1f
             ambDry[base] = ambDry[base] * duckMult + sfxDry[base]
             ambDry[base + 1] = ambDry[base + 1] * duckMult + sfxDry[base + 1]
@@ -225,6 +240,34 @@ object ProceduralAudioEngine {
 
         val pcm = masterToPcm16(ambDry, revSend, voiceoverMix, totalFrames, voiceoverGain, true)
         return encodePcmToAac(pcm)
+    }
+
+    /** Generates a lightweight visual waveform energy profile (0f..1f) for the Render Timeline UI. */
+    fun computeTimelineWaveform(durationSeconds: Int, config: StudioAudioConfig, bars: Int = 56): List<Float> {
+        val dur = durationSeconds.coerceIn(1, 60).toDouble()
+        val hasBed = config.ambience != "none" && config.ambienceVolume > 0.01f
+        val out = FloatArray(bars)
+        for (i in 0 until bars) {
+            val u = i.toDouble() / max(1, bars - 1)
+            val base = if (hasBed) {
+                (0.18 + 0.14 * abs(sin(u * PI * 6.0)) + 0.08 * abs(cos(u * PI * 11.0))) * config.ambienceVolume.coerceIn(0.2f, 1f)
+            } else 0.08
+            out[i] = base.toFloat()
+        }
+        config.cues.forEach { cue ->
+            val sec = if (cue.atProgress != null) cue.atProgress * dur else cue.atSeconds
+            val pos = ((sec / dur) * (bars - 1)).toInt().coerceIn(0, bars - 1)
+            val impactBoost = if (SfxCatalog.isImpactSfx(cue.sfx)) 0.95f else 0.68f
+            val peak = (impactBoost * cue.gain.coerceIn(0.3f, 1.2f)).coerceIn(0.2f, 1f)
+            for (d in -2..2) {
+                val idx = pos + d
+                if (idx in 0 until bars) {
+                    val falloff = 1f - abs(d) * 0.30f
+                    out[idx] = max(out[idx], peak * falloff)
+                }
+            }
+        }
+        return out.map { it.coerceIn(0.06f, 1f) }
     }
 
     /** Checks User Custom SFX first, then optional assets/sfx/ WAV override. */
@@ -499,12 +542,99 @@ object ProceduralAudioEngine {
                     addStereo(dry, rev, totalFrames, start + i, s * gL, s * gR, 0.30f)
                 }
             }
+            // --- v2.0 EXPLAINER & CARTOON POP ---
+            "bubble_pop" -> writeTapticImpulse(0.085, 290.0, 760.0, 28.0, 2600.0, 280.0, 0.20f, 0.28f)
+            "soft_boing", "boing_high", "boing_low" -> {
+                val baseF = when (sfx) { "boing_high" -> 280.0; "boing_low" -> 130.0; else -> 195.0 }
+                val n = (0.34 * SAMPLE_RATE).toInt()
+                var ph = 0.0
+                for (i in 0 until n) {
+                    val t = i.toDouble() / SAMPLE_RATE
+                    val f = (baseF + baseF * 0.9 * sin(TWO_PI * 7.5 * t) * exp(-t * 5.0)) * pitch
+                    ph += TWO_PI * max(60.0, f) / SAMPLE_RATE
+                    val env = min(1.0, t / 0.004) * exp(-t * 7.5)
+                    val s = (sin(ph) * 0.85 + sin(ph * 2.0) * 0.15).toFloat() * env.toFloat() * 0.65f
+                    addStereo(dry, rev, totalFrames, start + i, s * gL, s * gR, 0.30f)
+                }
+            }
+            "checklist_ding", "step_complete", "badge_unlock" ->
+                writeAcousticPluck(doubleArrayOf(659.25, 987.77, 1318.5), 0.78, 0.025, 0.34f, 0.9968f, 0.60f, 0.72f)
+            "magnifier_whoosh", "comic_zip", "warp_sweep" ->
+                writeSilkyWhoosh(0.32, 320.0, 3400.0, 200.0, 0.35, 0.56f, 82.0, 0.38f)
+            "paper_flip", "card_flip", "card_deal", "sticky_note" ->
+                writeSilkyWhoosh(0.18, 1050.0, 4800.0, 680.0, 0.28, 0.32f, 0.0, 0.20f)
+            "sparkle_chime", "celesta_twinkle", "bell_crystal" ->
+                writeAcousticPluck(doubleArrayOf(1046.5, 1318.5, 1568.0, 2093.0), 1.05, 0.036, 0.38f, 0.9972f, 0.48f, 0.86f)
+            "bulb_idea", "bell_soft" -> writeModalTap(1046.5, 2.0, 0.52, 8.5, 18.0, 0.44f, 0.64f)
+            "pencil_sketch", "chalk_write", "marker_swipe", "fabric_brush", "frosted_brush" ->
+                writeSilkyWhoosh(0.24, 1400.0, 5200.0, 900.0, 0.45, 0.20f, 0.0, 0.14f)
+            "counter_tick", "dial_notch", "clock_tick", "haptic_tick" ->
+                writeTapticImpulse(0.024, 520.0, 180.0, 195.0, 4200.0, 1100.0, 0.58f, 0.09f)
+            "chart_rise", "power_up", "toggle_on" -> writeTapticImpulse(0.14, 240.0, 680.0, 18.0, 2400.0, 320.0, 0.24f, 0.32f)
+            "power_down", "toggle_off" -> writeTapticImpulse(0.16, 620.0, 200.0, 18.0, 2200.0, 260.0, 0.24f, 0.30f)
+            "stamp_hit", "metal_slam", "trailer_hit" -> {
+                writeTapticImpulse(0.22, 180.0, 48.0, 16.0, 1800.0, 120.0, 0.65f, 0.38f)
+                writeModalTap(260.0, 2.42, 0.38, 12.0, 26.0, 0.42f, 0.45f)
+            }
+            "marimba_up" -> writeAcousticPluck(doubleArrayOf(523.25, 659.25), 0.55, 0.055, 0.26f, 0.994f, 0.72f, 0.46f)
+            "marimba_down" -> writeAcousticPluck(doubleArrayOf(659.25, 523.25), 0.55, 0.055, 0.26f, 0.994f, 0.72f, 0.46f)
+
+            // --- v2.0 LIQUID GLASS & MICRO-UI ---
+            "glass_clink", "prism_ping", "ice_chime", "ceramic_clink" ->
+                writeModalTap(1760.0, 1.505, 0.56, 8.2, 16.5, 0.42f, 0.62f)
+            "crystal_tap" -> writeModalTap(1396.9, 2.0, 0.34, 14.0, 28.0, 0.44f, 0.48f)
+            "mech_key_click" -> writeTapticImpulse(0.032, 420.0, 130.0, 150.0, 4600.0, 1250.0, 0.72f, 0.11f)
+            "lens_focus", "drawer_open", "drawer_close" ->
+                writeSilkyWhoosh(0.28, 380.0, 2400.0, 240.0, 0.36, 0.35f, 90.0, 0.32f)
+
+            // --- v2.0 CINEMA, FOLEY & ACOUSTIC ---
+            "silk_swoosh" -> writeSilkyWhoosh(0.54, 150.0, 1650.0, 95.0, 0.42, 0.48f, 62.0, 0.52f)
+            "whip_pan" -> writeSilkyWhoosh(0.26, 260.0, 3200.0, 150.0, 0.28, 0.62f, 88.0, 0.34f)
+            "tension_riser", "reverse_cymbal" -> writeSilkyWhoosh(1.25, 220.0, 4400.0, 180.0, 0.90, 0.32f, 52.0, 0.68f)
+            "impact_thud", "braam_low", "heartbeat_sub" -> {
+                val n = (0.72 * SAMPLE_RATE).toInt()
+                var ph = 0.0
+                for (i in 0 until n) {
+                    val t = i.toDouble() / SAMPLE_RATE
+                    val f = (38.0 + 72.0 * exp(-t * 14.0)) * pitch
+                    ph += TWO_PI * f / SAMPLE_RATE
+                    val env = min(1.0, t / 0.005) * exp(-t * 3.8)
+                    val s = (sin(ph) * 0.85 + sin(ph * 1.5) * 0.25).toFloat() * env.toFloat() * 0.85f
+                    addStereo(dry, rev, totalFrames, start + i, s * gL, s * gR, 0.50f)
+                }
+            }
+            "glitch_burst", "zipper_fast", "match_strike", "fire_crackle" -> {
+                val n = (0.18 * SAMPLE_RATE).toInt()
+                val f = SilkyAirFilter()
+                for (i in 0 until n) {
+                    val t = i.toDouble() / SAMPLE_RATE
+                    val gate = if (((i / 380) % 2) == 0) 1f else 0.18f
+                    val env = exp(-t * 14.0).toFloat() * gate
+                    val s = f.step(rng.nextWhite(), 4600.0 * pitch, 650.0) * env * 0.72f
+                    addStereo(dry, rev, totalFrames, start + i, s * gL, s * gR, 0.22f)
+                }
+            }
+            "soil_crunch", "leaf_rustle", "footstep_gravel", "soft_wind_gust" ->
+                writeSilkyWhoosh(0.36, 480.0, 2900.0, 280.0, 0.34, 0.26f, 0.0, 0.24f)
+            "stone_clack", "footstep_wood", "coin_spin" ->
+                writeModalTap(if (sfx == "coin_spin") 2480.0 else 580.0, 2.34, 0.24, 16.0, 34.0, 0.48f, 0.30f)
+            "rain_plip", "stream_splash" ->
+                writeTapticImpulse(0.11, 480.0, 1320.0, 26.0, 3200.0, 420.0, 0.35f, 0.42f)
+            "harp_gliss", "piano_warm", "piano_high", "cello_swell", "guitar_harmonic", "chord_resolve" -> {
+                val chord = when (sfx) {
+                    "piano_high" -> doubleArrayOf(523.25, 659.25, 783.99, 1046.5)
+                    "cello_swell" -> doubleArrayOf(130.81, 196.00, 261.63)
+                    "guitar_harmonic" -> doubleArrayOf(440.0, 659.25, 880.0)
+                    else -> doubleArrayOf(261.63, 329.63, 392.00, 523.25, 659.25)
+                }
+                writeAcousticPluck(chord, 1.35, 0.035, 0.28f, 0.9975f, 0.56f, 0.80f)
+            }
             else -> writeTapticImpulse(0.055, 190.0, 68.0, 72.0, 1400.0, 240.0, 0.32f, 0.14f)
         }
     }
 
     // =========================================================================
-    // EVOLVING MUSICAL AMBIENCE BEDS (10 BEDS — SMOOTH 4-CHORD PROGRESSIONS)
+    // EVOLVING MUSICAL AMBIENCE BEDS (15 BEDS — SMOOTH 4-CHORD PROGRESSIONS)
     // =========================================================================
     private fun renderAmbience(
         dry: FloatArray,
@@ -522,43 +652,48 @@ object ProceduralAudioEngine {
 
         // 4-chord progressions (each bar = 2.4s with smooth 0.55s overlap crossfade)
         val prog: Array<DoubleArray> = when (type) {
-            "dark_cinema" -> arrayOf(
+            "dark_cinema", "deep_space" -> arrayOf(
                 doubleArrayOf(55.00, 82.41, 110.00, 164.81),
                 doubleArrayOf(49.00, 73.42, 98.00, 146.83),
                 doubleArrayOf(43.65, 65.41, 87.31, 130.81),
                 doubleArrayOf(49.00, 73.42, 98.00, 164.81)
             )
-            "lofi_garden" -> arrayOf(
-                doubleArrayOf(130.81, 164.81, 196.00, 246.94), // Cmaj7
-                doubleArrayOf(110.00, 164.81, 196.00, 261.63), // Am7
-                doubleArrayOf(87.31, 130.81, 164.81, 220.00),  // Fmaj7
-                doubleArrayOf(98.00, 146.83, 196.00, 246.94)   // G6
+            "lofi_garden", "acoustic_studio" -> arrayOf(
+                doubleArrayOf(130.81, 164.81, 196.00, 246.94),
+                doubleArrayOf(110.00, 164.81, 196.00, 261.63),
+                doubleArrayOf(87.31, 130.81, 164.81, 220.00),
+                doubleArrayOf(98.00, 146.83, 196.00, 246.94)
             )
-            "documentary_pulse" -> arrayOf(
-                doubleArrayOf(146.83, 220.00, 293.66, 329.63), // Dsus2
-                doubleArrayOf(123.47, 185.00, 246.94, 293.66), // Bm7
-                doubleArrayOf(98.00, 146.83, 196.00, 246.94),  // Gmaj7
-                doubleArrayOf(110.00, 164.81, 220.00, 277.18)  // Aadd9
+            "documentary_pulse", "tech_minimal" -> arrayOf(
+                doubleArrayOf(146.83, 220.00, 293.66, 329.63),
+                doubleArrayOf(123.47, 185.00, 246.94, 293.66),
+                doubleArrayOf(98.00, 146.83, 196.00, 246.94),
+                doubleArrayOf(110.00, 164.81, 220.00, 277.18)
             )
-            "ios_glass_chimes" -> arrayOf(
-                doubleArrayOf(196.00, 246.94, 293.66, 369.99), // Gmaj7
-                doubleArrayOf(164.81, 246.94, 293.66, 392.00), // Em7
-                doubleArrayOf(130.81, 196.00, 246.94, 293.66), // Cmaj9
-                doubleArrayOf(146.83, 220.00, 293.66, 369.99)  // Dmaj7
+            "ios_glass_chimes", "warm_editorial_hum" -> arrayOf(
+                doubleArrayOf(196.00, 246.94, 293.66, 369.99),
+                doubleArrayOf(164.81, 246.94, 293.66, 392.00),
+                doubleArrayOf(130.81, 196.00, 246.94, 293.66),
+                doubleArrayOf(146.83, 220.00, 293.66, 369.99)
+            )
+            "room_tone", "soft_wind", "soil_nature", "night_rain" -> arrayOf(
+                doubleArrayOf(65.41, 98.00, 130.81, 196.00),
+                doubleArrayOf(65.41, 98.00, 146.83, 196.00),
+                doubleArrayOf(65.41, 98.00, 130.81, 164.81),
+                doubleArrayOf(65.41, 98.00, 130.81, 196.00)
             )
             else -> arrayOf(
-                doubleArrayOf(130.81, 196.00, 246.94, 293.66), // Cmaj9
-                doubleArrayOf(110.00, 164.81, 246.94, 261.63), // Am9
-                doubleArrayOf(87.31, 130.81, 196.00, 220.00),  // Fmaj9
-                doubleArrayOf(98.00, 146.83, 196.00, 246.94)   // G6
+                doubleArrayOf(130.81, 196.00, 246.94, 293.66),
+                doubleArrayOf(110.00, 164.81, 246.94, 261.63),
+                doubleArrayOf(87.31, 130.81, 196.00, 220.00),
+                doubleArrayOf(98.00, 146.83, 196.00, 246.94)
             )
         }
 
         val barSec = 2.4
         var subPh = 0.0
 
-        // Optional gentle acoustic pulse notes for documentary_pulse / lofi_garden
-        if (type == "documentary_pulse" || type == "lofi_garden") {
+        if (type == "documentary_pulse" || type == "lofi_garden" || type == "tech_minimal" || type == "acoustic_studio") {
             val bpm = if (type == "documentary_pulse") 106.0 else 86.0
             val stepSec = 60.0 / bpm / 2.0
             var stepT = 0.15

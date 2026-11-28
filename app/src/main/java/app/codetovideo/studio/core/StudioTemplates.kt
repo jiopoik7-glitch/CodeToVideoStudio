@@ -96,7 +96,7 @@ sc.cloud([ 2.6 + Math.cos(t * 0.18) * 0.25, 3.2, -6.0], { scale: 1.05, color: "#
 // 2-Bone Expressive Botanist with Automatic headLookAt, Smooth Pose Blend & Lip-Sync!
 const potPos = [0.70, 0.55, -0.04];
 const lookTarget = act === 1 ? potPos : (act === 2 ? [0.70, 1.18, -0.04] : [0.2, 1.1, 3.5]);
-const charYaw = lerpNum(0.32, 0.92, b01) - b12 * 0.46;
+const charYaw = ui.lerp(0.32, 0.92, b01) - b12 * 0.46;
 const hero = g3d.character(island, {
   pos: [-0.72, 0, 0.16],
   rot: [0, charYaw, 0],

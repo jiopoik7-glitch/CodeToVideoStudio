@@ -606,13 +606,43 @@ function makeFboBundle(g, w, h, withDepth, linearFilter) {
   return { fbo, tex, rb };
 }
 
+const __glUniformCache = new WeakMap();
+const __glAttribCache = new WeakMap();
+
+function getGlUniform(g, prog, name) {
+  let map = __glUniformCache.get(prog);
+  if (!map) { map = Object.create(null); __glUniformCache.set(prog, map); }
+  if (name in map) return map[name];
+  const loc = g.getUniformLocation(prog, name);
+  map[name] = loc;
+  return loc;
+}
+
+function getGlAttrib(g, prog, name) {
+  let map = __glAttribCache.get(prog);
+  if (!map) { map = Object.create(null); __glAttribCache.set(prog, map); }
+  if (name in map) return map[name];
+  const loc = g.getAttribLocation(prog, name);
+  map[name] = loc;
+  return loc;
+}
+
+function ensureTypedGeo(geo) {
+  if (!geo._posF32) geo._posF32 = geo.pos instanceof Float32Array ? geo.pos : new Float32Array(geo.pos);
+  if (!geo._normF32) geo._normF32 = geo.norm instanceof Float32Array ? geo.norm : new Float32Array(geo.norm);
+  if (!geo._uvF32) geo._uvF32 = geo.uv instanceof Float32Array ? geo.uv : new Float32Array(geo.uv);
+  if (!geo._idxU16) geo._idxU16 = geo.idx instanceof Uint16Array ? geo.idx : new Uint16Array(geo.idx);
+  return geo;
+}
+
 function resizeFboTargets(g, W, H, shadowRes) {
   const del = (f, t, r) => { if (f) g.deleteFramebuffer(f); if (t) g.deleteTexture(t); if (r) g.deleteRenderbuffer(r); };
-  if (glShadowResCur !== shadowRes) {
+  const sRes = Math.max(256, shadowRes || 512);
+  if (glShadowResCur !== sRes || !glShadowFbo) {
     del(glShadowFbo, glShadowTex, glShadowRb);
-    const sh = makeFboBundle(g, shadowRes, shadowRes, true, false);
+    const sh = makeFboBundle(g, sRes, sRes, true, false);
     glShadowFbo = sh.fbo; glShadowTex = sh.tex; glShadowRb = sh.rb;
-    glShadowResCur = shadowRes;
+    glShadowResCur = sRes;
   }
   if (glW !== W || glH !== H || !glSceneFbo) {
     glCanvas.width = W; glCanvas.height = H;
@@ -634,13 +664,33 @@ function resizeFboTargets(g, W, H, shadowRes) {
   }
 }
 
+function resetG3dContext() {
+  gl = null; glCanvas = null; glW = 0; glH = 0; glShadowResCur = 0;
+  glPbrProg = null; glShadowProg = null; glDepthProg = null;
+  glBloomExtProg = null; glBloomBlurProg = null; glPostProg = null;
+  glShadowFbo = null; glShadowTex = null; glShadowRb = null;
+  glSceneFbo = null; glSceneTex = null; glSceneRb = null;
+  glDepthFbo = null; glDepthTex = null; glDepthRb = null;
+  glBloomFboA = null; glBloomTexA = null; glBloomFboB = null; glBloomTexB = null;
+  glBufPos = null; glBufNorm = null; glBufUv = null; glBufIdx = null; glQuadBuf = null;
+  glWhiteTex = null; glDynamicTex = null;
+  glShaderCache.clear();
+}
+
 function ensureGl(W, H, shadowRes) {
-  const sRes = shadowRes || 1024;
+  const sRes = Math.max(256, shadowRes || 512);
+  if (gl && typeof gl.isContextLost === "function" && gl.isContextLost()) {
+    resetG3dContext();
+  }
   if (!glCanvas) {
-    glCanvas = new OffscreenCanvas(W, H);
-    const opts = { alpha: true, antialias: true, depth: true, premultipliedAlpha: true, preserveDrawingBuffer: true };
+    glCanvas = createWorkCanvas(W, H);
+    if (typeof glCanvas.addEventListener === "function") {
+      glCanvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); resetG3dContext(); }, false);
+    }
+    const opts = { alpha: true, antialias: true, depth: true, premultipliedAlpha: true, preserveDrawingBuffer: true, powerPreference: "high-performance" };
     gl = glCanvas.getContext("webgl2", opts) || glCanvas.getContext("webgl", opts);
     if (!gl) return null;
+    detectGpuProfile(gl);
     glBufPos = gl.createBuffer();
     glBufNorm = gl.createBuffer();
     glBufUv = gl.createBuffer();
@@ -675,7 +725,7 @@ function ensureGl(W, H, shadowRes) {
 
 // Helper: Draw Full-Screen Quad for Post-FX
 function drawGlQuad(g, prog) {
-  const loc = g.getAttribLocation(prog, "aPos");
+  const loc = getGlAttrib(g, prog, "aPos");
   g.bindBuffer(g.ARRAY_BUFFER, glQuadBuf);
   g.enableVertexAttribArray(loc);
   g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0);

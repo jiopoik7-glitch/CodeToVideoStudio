@@ -50,10 +50,11 @@ class RenderController(private val context: Context, private val runtime: WebCan
                 val settings = project.renderSettings
                 val (width, height) = settings.dimensions()
                 val meta = ProjectMetadataParser.parse(project.sourceBody)
+                val effectiveAudio = project.effectiveAudioConfig(meta)
 
                 val wantsAudio = settings.includeAudio && (
-                    meta.audio.cues.isNotEmpty() ||
-                    meta.audio.ambience != "none" ||
+                    effectiveAudio.cues.isNotEmpty() ||
+                    effectiveAudio.ambience != "none" ||
                     settings.voiceoverUri.isNotBlank()
                 )
                 val encodedAudio = if (wantsAudio) {
@@ -62,7 +63,7 @@ class RenderController(private val context: Context, private val runtime: WebCan
                             context = context,
                             durationSeconds = settings.durationSeconds,
                             seed = project.seed,
-                            config = meta.audio,
+                            config = effectiveAudio,
                             sfxMasterGain = settings.sfxVolume,
                             ambienceMasterGain = settings.ambienceVolume,
                             voiceoverUri = settings.voiceoverUri,
@@ -99,7 +100,7 @@ class RenderController(private val context: Context, private val runtime: WebCan
                 val previewStep = if (settings.fps >= 60) 3 else 2
                 for (frame in 0 until total) {
                     check(!cancelled.get()) { "Render dibatalkan." }
-                    val rgba = runtime.requestExportFrame(project, frame, false).get(20, TimeUnit.SECONDS)
+                    val rgba = runtime.requestExportFrame(project, frame, false).get(30, TimeUnit.SECONDS)
                     check(rgba.size == width * height * 4) { "Ukuran payload frame $frame tidak valid." }
                     activeEncoder.writeFrame(frame, rgba)
                     if (frame == 0 || frame == total - 1 || frame % previewStep == 0) {

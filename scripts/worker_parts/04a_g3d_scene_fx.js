@@ -3,13 +3,13 @@
 // =======================================================
 function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
   const g3dObj = {
-    get supported() { return !!ensureGl(W, H, isExportMode ? 2048 : 1024); },
+    get supported() { return !!ensureGl(W, H, isExportMode ? 2048 : 512); },
 
-    // Creates a dynamic 2D OffscreenCanvas texture to wrap onto any 3D mesh/phone/bottle!
+    // Creates a dynamic 2D canvas texture to wrap onto any 3D mesh/phone/bottle!
     texture(drawFn, size) {
       const tw = clampNum(size || 512, 128, 1024);
       const th = tw;
-      const oc = new OffscreenCanvas(tw, th);
+      const oc = createWorkCanvas(tw, th);
       const c2 = oc.getContext("2d");
       if (c2 && typeof drawFn === "function") drawFn(c2, tw, th);
       return { __canvas2d: oc, width: tw, height: th };
@@ -66,6 +66,7 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
         };
         const nodeApi = {
           worldMatrix: worldM,
+          __lightPreview: shouldUseLightPreview(isExportMode),
           node(childOpts) { return createNode(worldM, childOpts); },
           sphere(pos, r, mat, segs) { pushMesh(buildEllipsoidGeo(r || 1, r || 1, r || 1, segs), pos, [0, 0, 0], 1, mat); return nodeApi; },
           ellipsoid(pos, radii, rot, mat, segs) {
@@ -123,9 +124,10 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
       // REAL 3D VOLUMETRIC PARTICLE SYSTEMS (Z-Buffered, DoF-Aware & Orbit-True!)
       const fx3dFn = (type, opts) => {
         const o = opts || {};
+        const lodScale = shouldUseLightPreview(isExportMode) ? 0.5 : 1.0;
         if (type === "water_stream") {
           const from = o.from || [0, 1.0, 0], to = o.to || [0.6, 0.4, 0];
-          const count = clampNum(o.count || 14, 4, 32), col = o.color || "#4CC8FF";
+          const count = Math.max(4, Math.round(clampNum(o.count || 14, 4, 32) * lodScale)), col = o.color || "#4CC8FF";
           for (let i = 0; i < count; i++) {
             const u = (tSec * (o.speed || 2.2) + i / count) % 1;
             const spread = (randFn(2100 + i) - 0.5) * (o.spread || 0.08) * u;
@@ -134,17 +136,16 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
             const arcY = lerpNum(from[1], to[1], u * u) + Math.sin(u * Math.PI) * (o.arc || 0.14);
             rootNode.ellipsoid([px, arcY, pz], [0.022, 0.044, 0.022], [0.25, 0, 0], {
               color: col, material: "water", alpha: 0.86, castShadow: false
-            }, 10);
+            }, 8);
           }
-          // Ground splash ripples at impact target
           for (let r = 0; r < 2; r++) {
             const ru = (tSec * 2.4 + r * 0.5) % 1;
             rootNode.torus([to[0], to[1] + 0.015, to[2]], 0.04 + ru * 0.16, 0.008 * (1 - ru), [Math.PI * 0.5, 0, 0], {
               color: "#A8E6FF", unlit: true, alpha: (1 - ru) * 0.65, castShadow: false
-            }, 20, 8);
+            }, 16, 6);
           }
         } else if (type === "fireflies") {
-          const count = clampNum(o.count || 18, 4, 45), rad = o.radius || 2.8, col = o.color || "#FFE066";
+          const count = Math.max(4, Math.round(clampNum(o.count || 18, 4, 45) * lodScale)), rad = o.radius || 2.8, col = o.color || "#FFE066";
           const ctr = o.center || [0, 1.1, 0];
           for (let i = 0; i < count; i++) {
             const a = randFn(2200 + i) * Math.PI * 2 + tSec * (0.25 + (i % 3) * 0.12);
@@ -156,7 +157,7 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
             }, 8);
           }
         } else if (type === "petals") {
-          const count = clampNum(o.count || 18, 4, 40), rad = o.radius || 3.2, col = o.color || "#FF8FB1";
+          const count = Math.max(4, Math.round(clampNum(o.count || 18, 4, 40) * lodScale)), rad = o.radius || 3.2, col = o.color || "#FF8FB1";
           for (let i = 0; i < count; i++) {
             const u = (tSec * (0.14 + (i % 3) * 0.04) + randFn(2400 + i)) % 1;
             const px = (randFn(2450 + i) - 0.5) * rad * 2 + Math.sin(tSec * 1.4 + i) * 0.45;
@@ -167,7 +168,7 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
             });
           }
         } else if (type === "rain") {
-          const count = clampNum(o.count || 32, 8, 60), rad = o.radius || 3.5;
+          const count = Math.max(8, Math.round(clampNum(o.count || 32, 8, 60) * lodScale)), rad = o.radius || 3.5;
           for (let i = 0; i < count; i++) {
             const u = (tSec * 1.9 + randFn(2600 + i)) % 1;
             const rx = (randFn(2660 + i) - 0.5) * rad * 2;
@@ -178,7 +179,7 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
             }, 6);
           }
         } else if (type === "dust") {
-          const count = clampNum(o.count || 22, 6, 48), rad = o.radius || 3.0, col = o.color || "#FFF4D6";
+          const count = Math.max(6, Math.round(clampNum(o.count || 22, 6, 48) * lodScale)), rad = o.radius || 3.0, col = o.color || "#FFF4D6";
           for (let i = 0; i < count; i++) {
             const dx = (randFn(2800 + i) - 0.5) * rad * 2 + Math.sin(tSec * 0.6 + i) * 0.25;
             const dy = randFn(2860 + i) * 2.8 + Math.cos(tSec * 0.5 + i) * 0.18;
@@ -186,7 +187,7 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
             rootNode.sphere([dx, dy, dz], 0.018, { color: col, emissive: col, alpha: 0.55, castShadow: false }, 6);
           }
         } else if (type === "magic_swirl") {
-          const ctr = o.center || [0, 0.5, 0], count = clampNum(o.count || 20, 6, 40), col = o.color || "#66F0B2";
+          const ctr = o.center || [0, 0.5, 0], count = Math.max(6, Math.round(clampNum(o.count || 20, 6, 40) * lodScale)), col = o.color || "#66F0B2";
           for (let i = 0; i < count; i++) {
             const u = (tSec * 0.55 + i / count) % 1;
             const a = u * Math.PI * 5 + i * 0.6;
@@ -305,9 +306,18 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
         },
         render(targetCtx) {
           if (postCfg._autoFocusPt) { const fp = postCfg._autoFocusPt; postCfg.dofFocus = Math.hypot(eye[0]-fp[0], eye[1]-fp[1], eye[2]-fp[2]); }
-          const shadowRes = isExportMode ? 2048 : 1024;
+          const shadowRes = isExportMode ? 2048 : 512;
           const g = ensureGl(W, H, shadowRes);
           if (!g) return false;
+
+          // Evaluate adaptive preview flags AFTER ensureGl() has probed GPU capabilities
+          const useLight = shouldUseLightPreview(isExportMode);
+          const runShadows = lights.shadows && !useLight;
+          const runDof = (postCfg.dofAperture > 0.005) && isExportMode;
+          const runBloom = (postCfg.bloom > 0.005 || (!useLight && postCfg.godRays > 0.005)) && !useLight;
+          const effBloom = runBloom ? postCfg.bloom : 0.0;
+          const effGodRays = useLight ? 0.0 : (isExportMode ? postCfg.godRays : postCfg.godRays * 0.5);
+          const effDofAperture = runDof ? postCfg.dofAperture : 0.0;
 
           const projM = m4Persp(fov, W / Math.max(1, H), 0.1, 120.0);
           const viewM = m4LookAt(eye, target, up);
@@ -326,53 +336,55 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
             if (a < 0.99 || items[i].mat.featherShadow) trans.push(items[i]); else opaque.push(items[i]);
           }
 
-          // PASS 1: 1024/2048px Soft Shadow Map
-          if (lights.shadows && glShadowFbo && glShadowProg) {
+          // PASS 1: Soft Shadow Map (2048px Export, 512px Hardware Preview, Skipped on SwiftShader Preview)
+          if (runShadows && glShadowFbo && glShadowProg) {
             g.bindFramebuffer(g.FRAMEBUFFER, glShadowFbo);
             g.viewport(0, 0, shadowRes, shadowRes);
             g.disable(g.BLEND); g.enable(g.DEPTH_TEST); g.depthMask(true); g.disable(g.CULL_FACE);
             g.clearColor(1, 1, 1, 1); g.clear(g.COLOR_BUFFER_BIT | g.DEPTH_BUFFER_BIT);
             g.useProgram(glShadowProg);
-            g.uniformMatrix4fv(g.getUniformLocation(glShadowProg, "uLightVP"), false, lightVP);
-            const sPosLoc = g.getAttribLocation(glShadowProg, "aPos");
-            const sModLoc = g.getUniformLocation(glShadowProg, "uModel");
+            g.uniformMatrix4fv(getGlUniform(g, glShadowProg, "uLightVP"), false, lightVP);
+            const sPosLoc = getGlAttrib(g, glShadowProg, "aPos");
+            const sModLoc = getGlUniform(g, glShadowProg, "uModel");
             g.enableVertexAttribArray(sPosLoc);
             for (let i = 0; i < opaque.length; i++) {
               const it = opaque[i];
               if (it.mat.castShadow === false) continue;
+              const tg = ensureTypedGeo(it.geo);
               g.uniformMatrix4fv(sModLoc, false, it.modelM);
               g.bindBuffer(g.ARRAY_BUFFER, glBufPos);
-              g.bufferData(g.ARRAY_BUFFER, new Float32Array(it.geo.pos), g.STREAM_DRAW);
+              g.bufferData(g.ARRAY_BUFFER, tg._posF32, g.STREAM_DRAW);
               g.vertexAttribPointer(sPosLoc, 3, g.FLOAT, false, 0, 0);
               g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, glBufIdx);
-              g.bufferData(g.ELEMENT_ARRAY_BUFFER, new Uint16Array(it.geo.idx), g.STREAM_DRAW);
-              g.drawElements(g.TRIANGLES, it.geo.idx.length, g.UNSIGNED_SHORT, 0);
+              g.bufferData(g.ELEMENT_ARRAY_BUFFER, tg._idxU16, g.STREAM_DRAW);
+              g.drawElements(g.TRIANGLES, tg._idxU16.length, g.UNSIGNED_SHORT, 0);
             }
           }
 
-          // PASS 2: Linear Depth Map (only when Depth-of-Field aperture > 0)
+          // PASS 2: Linear Depth Map (Full Export Mode only when Depth-of-Field aperture > 0)
           const hw = Math.max(2, W >> 1), hh = Math.max(2, H >> 1);
-          if (postCfg.dofAperture > 0.005 && glDepthFbo) {
+          if (runDof && glDepthFbo) {
             g.bindFramebuffer(g.FRAMEBUFFER, glDepthFbo);
             g.viewport(0, 0, hw, hh);
             g.disable(g.BLEND); g.enable(g.DEPTH_TEST); g.depthMask(true); g.disable(g.CULL_FACE);
             g.clearColor(1, 1, 1, 1); g.clear(g.COLOR_BUFFER_BIT | g.DEPTH_BUFFER_BIT);
             g.useProgram(glDepthProg);
-            g.uniformMatrix4fv(g.getUniformLocation(glDepthProg, "uProj"), false, projM);
-            g.uniformMatrix4fv(g.getUniformLocation(glDepthProg, "uView"), false, viewM);
-            g.uniform3fv(g.getUniformLocation(glDepthProg, "uEye"), new Float32Array(eye));
-            const dPosLoc = g.getAttribLocation(glDepthProg, "aPos");
-            const dModLoc = g.getUniformLocation(glDepthProg, "uModel");
+            g.uniformMatrix4fv(getGlUniform(g, glDepthProg, "uProj"), false, projM);
+            g.uniformMatrix4fv(getGlUniform(g, glDepthProg, "uView"), false, viewM);
+            g.uniform3f(getGlUniform(g, glDepthProg, "uEye"), eye[0], eye[1], eye[2]);
+            const dPosLoc = getGlAttrib(g, glDepthProg, "aPos");
+            const dModLoc = getGlUniform(g, glDepthProg, "uModel");
             g.enableVertexAttribArray(dPosLoc);
             for (let i = 0; i < opaque.length; i++) {
               const it = opaque[i];
+              const tg = ensureTypedGeo(it.geo);
               g.uniformMatrix4fv(dModLoc, false, it.modelM);
               g.bindBuffer(g.ARRAY_BUFFER, glBufPos);
-              g.bufferData(g.ARRAY_BUFFER, new Float32Array(it.geo.pos), g.STREAM_DRAW);
+              g.bufferData(g.ARRAY_BUFFER, tg._posF32, g.STREAM_DRAW);
               g.vertexAttribPointer(dPosLoc, 3, g.FLOAT, false, 0, 0);
               g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, glBufIdx);
-              g.bufferData(g.ELEMENT_ARRAY_BUFFER, new Uint16Array(it.geo.idx), g.STREAM_DRAW);
-              g.drawElements(g.TRIANGLES, it.geo.idx.length, g.UNSIGNED_SHORT, 0);
+              g.bufferData(g.ELEMENT_ARRAY_BUFFER, tg._idxU16, g.STREAM_DRAW);
+              g.drawElements(g.TRIANGLES, tg._idxU16.length, g.UNSIGNED_SHORT, 0);
             }
           }
 
@@ -383,28 +395,28 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
           g.clearColor(0, 0, 0, 0); g.clear(g.COLOR_BUFFER_BIT | g.DEPTH_BUFFER_BIT);
 
           g.useProgram(glPbrProg);
-          const uLoc = (n) => g.getUniformLocation(glPbrProg, n);
+          const uLoc = (n) => getGlUniform(g, glPbrProg, n);
 
           g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, glShadowTex);
           g.uniform1i(uLoc("uShadowMap"), 0);
           g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, glWhiteTex);
           g.uniform1i(uLoc("uAlbedoTex"), 1);
 
-          g.uniform1f(uLoc("uShadowEnabled"), lights.shadows ? 1.0 : 0.0);
+          g.uniform1f(uLoc("uShadowEnabled"), runShadows ? 1.0 : 0.0);
           g.uniform1f(uLoc("uShadowTexel"), 1.0 / shadowRes);
-          g.uniform3fv(uLoc("uShadowColor"), new Float32Array(lights.shadowColor));
+          g.uniform3f(uLoc("uShadowColor"), lights.shadowColor[0], lights.shadowColor[1], lights.shadowColor[2]);
           g.uniformMatrix4fv(uLoc("uLightVP"), false, lightVP);
           g.uniformMatrix4fv(uLoc("uProj"), false, projM);
           g.uniformMatrix4fv(uLoc("uView"), false, viewM);
-          g.uniform3fv(uLoc("uEye"), new Float32Array(eye));
-          g.uniform3fv(uLoc("uKeyDir"), new Float32Array(lights.key));
-          g.uniform3fv(uLoc("uFillDir"), new Float32Array(lights.fill));
-          g.uniform3fv(uLoc("uRimDir"), new Float32Array(lights.rim));
-          g.uniform3fv(uLoc("uKeyCol"), new Float32Array(lights.keyCol));
-          g.uniform3fv(uLoc("uFillCol"), new Float32Array(lights.fillCol));
+          g.uniform3f(uLoc("uEye"), eye[0], eye[1], eye[2]);
+          g.uniform3f(uLoc("uKeyDir"), lights.key[0], lights.key[1], lights.key[2]);
+          g.uniform3f(uLoc("uFillDir"), lights.fill[0], lights.fill[1], lights.fill[2]);
+          g.uniform3f(uLoc("uRimDir"), lights.rim[0], lights.rim[1], lights.rim[2]);
+          g.uniform3f(uLoc("uKeyCol"), lights.keyCol[0], lights.keyCol[1], lights.keyCol[2]);
+          g.uniform3f(uLoc("uFillCol"), lights.fillCol[0], lights.fillCol[1], lights.fillCol[2]);
           g.uniform1f(uLoc("uAmb"), lights.amb);
           g.uniform1f(uLoc("uTime"), tSec);
-          g.uniform3fv(uLoc("uFogColor"), new Float32Array(lights.fogCol));
+          g.uniform3f(uLoc("uFogColor"), lights.fogCol[0], lights.fogCol[1], lights.fogCol[2]);
           g.uniform2f(uLoc("uFogRange"), lights.fogNear, lights.fogFar);
 
           // Bind 4 Point Lights & 1 Spot Light
@@ -422,37 +434,41 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
           g.uniform2fv(uLoc("uPtParam[0]"), ptParArr);
 
           if (lights.spot) {
-            g.uniform3fv(uLoc("uSpotPos"), new Float32Array(lights.spot.pos));
-            g.uniform3fv(uLoc("uSpotDir"), new Float32Array(lights.spot.dir));
-            g.uniform3fv(uLoc("uSpotCol"), new Float32Array(lights.spot.col));
+            g.uniform3f(uLoc("uSpotPos"), lights.spot.pos[0], lights.spot.pos[1], lights.spot.pos[2]);
+            g.uniform3f(uLoc("uSpotDir"), lights.spot.dir[0], lights.spot.dir[1], lights.spot.dir[2]);
+            g.uniform3f(uLoc("uSpotCol"), lights.spot.col[0], lights.spot.col[1], lights.spot.col[2]);
             g.uniform3f(uLoc("uSpotParam"), lights.spot.intensity, lights.spot.cosCone, lights.spot.radius);
           } else {
             g.uniform3f(uLoc("uSpotParam"), 0, 0, 1);
           }
 
-          const aPos = g.getAttribLocation(glPbrProg, "aPos");
-          const aNorm = g.getAttribLocation(glPbrProg, "aNorm");
-          const aUv = g.getAttribLocation(glPbrProg, "aUv");
+          const aPos = getGlAttrib(g, glPbrProg, "aPos");
+          const aNorm = getGlAttrib(g, glPbrProg, "aNorm");
+          const aUv = getGlAttrib(g, glPbrProg, "aUv");
           g.enableVertexAttribArray(aPos); g.enableVertexAttribArray(aNorm); g.enableVertexAttribArray(aUv);
 
-          // Optional 3D Sky Dome Sphere centered on camera eye
+          // Optional 3D Sky Dome Sphere centered on camera eye (cached geometry!)
           if (skyCfg) {
-            const skyGeo = buildEllipsoidGeo(55, 55, 55, 24);
+            const skyGeo = ensureTypedGeo(buildEllipsoidGeo(55, 55, 55, useLight ? 16 : 24));
             const skyM = m4Transform(eye, [0, 0, 0], 1);
+            const sz = hexToVec3(skyCfg.zenith);
+            const sh = hexToVec3(skyCfg.horizon);
+            const sg = hexToVec3(skyCfg.ground);
+            const ss = hexToVec3(skyCfg.sun);
             g.disable(g.DEPTH_TEST); g.depthMask(false); g.disable(g.BLEND);
             g.uniform1f(uLoc("uSkyMode"), skyCfg.mode || 1.0);
-            g.uniform3fv(uLoc("uSkyZenith"), new Float32Array(hexToVec3(skyCfg.zenith)));
-            g.uniform3fv(uLoc("uSkyHorizon"), new Float32Array(hexToVec3(skyCfg.horizon)));
-            g.uniform3fv(uLoc("uSkyGround"), new Float32Array(hexToVec3(skyCfg.ground)));
-            g.uniform3fv(uLoc("uSunCol"), new Float32Array(hexToVec3(skyCfg.sun)));
+            g.uniform3f(uLoc("uSkyZenith"), sz[0], sz[1], sz[2]);
+            g.uniform3f(uLoc("uSkyHorizon"), sh[0], sh[1], sh[2]);
+            g.uniform3f(uLoc("uSkyGround"), sg[0], sg[1], sg[2]);
+            g.uniform3f(uLoc("uSunCol"), ss[0], ss[1], ss[2]);
             g.uniform1f(uLoc("uOutlineWidth"), 0.0);
             g.uniformMatrix4fv(uLoc("uModel"), false, skyM);
             g.uniformMatrix3fv(uLoc("uNormMat"), false, m3NormalFromM4(skyM));
-            g.bindBuffer(g.ARRAY_BUFFER, glBufPos); g.bufferData(g.ARRAY_BUFFER, new Float32Array(skyGeo.pos), g.STREAM_DRAW); g.vertexAttribPointer(aPos, 3, g.FLOAT, false, 0, 0);
-            g.bindBuffer(g.ARRAY_BUFFER, glBufNorm); g.bufferData(g.ARRAY_BUFFER, new Float32Array(skyGeo.norm), g.STREAM_DRAW); g.vertexAttribPointer(aNorm, 3, g.FLOAT, false, 0, 0);
-            g.bindBuffer(g.ARRAY_BUFFER, glBufUv); g.bufferData(g.ARRAY_BUFFER, new Float32Array(skyGeo.uv), g.STREAM_DRAW); g.vertexAttribPointer(aUv, 2, g.FLOAT, false, 0, 0);
-            g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, glBufIdx); g.bufferData(g.ELEMENT_ARRAY_BUFFER, new Uint16Array(skyGeo.idx), g.STREAM_DRAW);
-            g.drawElements(g.TRIANGLES, skyGeo.idx.length, g.UNSIGNED_SHORT, 0);
+            g.bindBuffer(g.ARRAY_BUFFER, glBufPos); g.bufferData(g.ARRAY_BUFFER, skyGeo._posF32, g.STREAM_DRAW); g.vertexAttribPointer(aPos, 3, g.FLOAT, false, 0, 0);
+            g.bindBuffer(g.ARRAY_BUFFER, glBufNorm); g.bufferData(g.ARRAY_BUFFER, skyGeo._normF32, g.STREAM_DRAW); g.vertexAttribPointer(aNorm, 3, g.FLOAT, false, 0, 0);
+            g.bindBuffer(g.ARRAY_BUFFER, glBufUv); g.bufferData(g.ARRAY_BUFFER, skyGeo._uvF32, g.STREAM_DRAW); g.vertexAttribPointer(aUv, 2, g.FLOAT, false, 0, 0);
+            g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, glBufIdx); g.bufferData(g.ELEMENT_ARRAY_BUFFER, skyGeo._idxU16, g.STREAM_DRAW);
+            g.drawElements(g.TRIANGLES, skyGeo._idxU16.length, g.UNSIGNED_SHORT, 0);
             g.enable(g.DEPTH_TEST); g.depthMask(true);
           }
           g.uniform1f(uLoc("uSkyMode"), 0.0);
@@ -465,64 +481,71 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
             });
           }
 
+          const uModelLoc = uLoc("uModel"), uNormMatLoc = uLoc("uNormMat"), uOutlineLoc = uLoc("uOutlineWidth");
+          const uUnlitLoc = uLoc("uUnlit"), uHasTexLoc = uLoc("uHasTex"), uFeatherLoc = uLoc("uFeatherShadow");
+          const uColorLoc = uLoc("uColor"), uColor2Loc = uLoc("uColor2"), uEmissiveLoc = uLoc("uEmissive");
+          const uRimColLoc = uLoc("uRimColor"), uRoughLoc = uLoc("uRoughness"), uMetalLoc = uLoc("uMetalness");
+          const uRimPowLoc = uLoc("uRimPow"), uSssLoc = uLoc("uSss"), uAlphaLoc = uLoc("uAlpha");
+          const uDetailLoc = uLoc("uDetail"), uMatTypeLoc = uLoc("uMatType");
+
           const drawList = (list, isTrans) => {
             if (isTrans) { g.enable(g.BLEND); g.blendFunc(g.ONE, g.ONE_MINUS_SRC_ALPHA); g.depthMask(false); }
             else { g.disable(g.BLEND); g.depthMask(true); }
             for (let i = 0; i < list.length; i++) {
-              const it = list[i], m = it.mat, geo = it.geo;
+              const it = list[i], m = it.mat, tg = ensureTypedGeo(it.geo);
               const normM = m3NormalFromM4(it.modelM);
-              g.uniformMatrix4fv(uLoc("uModel"), false, it.modelM);
-              g.uniformMatrix3fv(uLoc("uNormMat"), false, normM);
+              g.uniformMatrix4fv(uModelLoc, false, it.modelM);
+              g.uniformMatrix3fv(uNormMatLoc, false, normM);
 
-              g.bindBuffer(g.ARRAY_BUFFER, glBufPos); g.bufferData(g.ARRAY_BUFFER, new Float32Array(geo.pos), g.STREAM_DRAW); g.vertexAttribPointer(aPos, 3, g.FLOAT, false, 0, 0);
-              g.bindBuffer(g.ARRAY_BUFFER, glBufNorm); g.bufferData(g.ARRAY_BUFFER, new Float32Array(geo.norm), g.STREAM_DRAW); g.vertexAttribPointer(aNorm, 3, g.FLOAT, false, 0, 0);
-              g.bindBuffer(g.ARRAY_BUFFER, glBufUv); g.bufferData(g.ARRAY_BUFFER, new Float32Array(geo.uv), g.STREAM_DRAW); g.vertexAttribPointer(aUv, 2, g.FLOAT, false, 0, 0);
-              g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, glBufIdx); g.bufferData(g.ELEMENT_ARRAY_BUFFER, new Uint16Array(geo.idx), g.STREAM_DRAW);
+              g.bindBuffer(g.ARRAY_BUFFER, glBufPos); g.bufferData(g.ARRAY_BUFFER, tg._posF32, g.STREAM_DRAW); g.vertexAttribPointer(aPos, 3, g.FLOAT, false, 0, 0);
+              g.bindBuffer(g.ARRAY_BUFFER, glBufNorm); g.bufferData(g.ARRAY_BUFFER, tg._normF32, g.STREAM_DRAW); g.vertexAttribPointer(aNorm, 3, g.FLOAT, false, 0, 0);
+              g.bindBuffer(g.ARRAY_BUFFER, glBufUv); g.bufferData(g.ARRAY_BUFFER, tg._uvF32, g.STREAM_DRAW); g.vertexAttribPointer(aUv, 2, g.FLOAT, false, 0, 0);
+              g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, glBufIdx); g.bufferData(g.ELEMENT_ARRAY_BUFFER, tg._idxU16, g.STREAM_DRAW);
 
-              // Optional Inverted-Hull Toon Ink Outline Pass!
               if (m.outline && m.outline > 0 && !isTrans) {
                 g.enable(g.CULL_FACE); g.cullFace(g.FRONT);
-                g.uniform1f(uLoc("uOutlineWidth"), m.outline);
-                g.uniform1f(uLoc("uUnlit"), 1.0);
-                g.uniform1f(uLoc("uHasTex"), 0.0);
-                g.uniform1f(uLoc("uFeatherShadow"), 0.0);
+                g.uniform1f(uOutlineLoc, m.outline);
+                g.uniform1f(uUnlitLoc, 1.0);
+                g.uniform1f(uHasTexLoc, 0.0);
+                g.uniform1f(uFeatherLoc, 0.0);
                 const oc = hexToVec3(m.outlineColor || "#181C24");
-                g.uniform3fv(uLoc("uColor"), new Float32Array(oc));
-                g.uniform3fv(uLoc("uColor2"), new Float32Array(oc));
-                g.uniform1f(uLoc("uAlpha"), 1.0);
-                g.drawElements(g.TRIANGLES, geo.idx.length, g.UNSIGNED_SHORT, 0);
+                g.uniform3f(uColorLoc, oc[0], oc[1], oc[2]);
+                g.uniform3f(uColor2Loc, oc[0], oc[1], oc[2]);
+                g.uniform1f(uAlphaLoc, 1.0);
+                g.drawElements(g.TRIANGLES, tg._idxU16.length, g.UNSIGNED_SHORT, 0);
                 g.disable(g.CULL_FACE);
               }
-              g.uniform1f(uLoc("uOutlineWidth"), 0.0);
+              g.uniform1f(uOutlineLoc, 0.0);
 
-              // Dynamic 2D->3D Canvas Texture Upload
               if (m.map && m.map.__canvas2d) {
                 g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, glDynamicTex);
                 g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, m.map.__canvas2d);
-                g.uniform1f(uLoc("uHasTex"), 1.0);
+                g.uniform1f(uHasTexLoc, 1.0);
               } else {
                 g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, glWhiteTex);
-                g.uniform1f(uLoc("uHasTex"), 0.0);
+                g.uniform1f(uHasTexLoc, 0.0);
               }
 
               const c1 = hexToVec3(m.color || "#E6ECF5");
               const c2 = m.color2 ? hexToVec3(m.color2) : c1;
-              g.uniform3fv(uLoc("uColor"), new Float32Array(c1));
-              g.uniform3fv(uLoc("uColor2"), new Float32Array(c2));
-              g.uniform3fv(uLoc("uEmissive"), new Float32Array(m.emissive ? hexToVec3(m.emissive) : [0, 0, 0]));
-              g.uniform3fv(uLoc("uRimColor"), new Float32Array(hexToVec3(m.rimColor || "#FFFFFF")));
-              g.uniform1f(uLoc("uRoughness"), m.roughness !== undefined ? m.roughness : 0.45);
-              g.uniform1f(uLoc("uMetalness"), m.metalness !== undefined ? m.metalness : 0.0);
-              g.uniform1f(uLoc("uRimPow"), m.rim !== undefined ? m.rim : 0.30);
-              g.uniform1f(uLoc("uSss"), m.sss !== undefined ? m.sss : 0.0);
-              g.uniform1f(uLoc("uAlpha"), m.alpha !== undefined ? m.alpha : 1.0);
-              g.uniform1f(uLoc("uUnlit"), m.unlit ? 1.0 : 0.0);
-              g.uniform1f(uLoc("uFeatherShadow"), m.featherShadow ? 1.0 : 0.0);
-              g.uniform1f(uLoc("uDetail"), m.detail !== undefined ? m.detail : 0.0);
+              const em = m.emissive ? hexToVec3(m.emissive) : [0, 0, 0];
+              const rc = hexToVec3(m.rimColor || "#FFFFFF");
+              g.uniform3f(uColorLoc, c1[0], c1[1], c1[2]);
+              g.uniform3f(uColor2Loc, c2[0], c2[1], c2[2]);
+              g.uniform3f(uEmissiveLoc, em[0], em[1], em[2]);
+              g.uniform3f(uRimColLoc, rc[0], rc[1], rc[2]);
+              g.uniform1f(uRoughLoc, m.roughness !== undefined ? m.roughness : 0.45);
+              g.uniform1f(uMetalLoc, m.metalness !== undefined ? m.metalness : 0.0);
+              g.uniform1f(uRimPowLoc, m.rim !== undefined ? m.rim : 0.30);
+              g.uniform1f(uSssLoc, m.sss !== undefined ? m.sss : 0.0);
+              g.uniform1f(uAlphaLoc, m.alpha !== undefined ? m.alpha : 1.0);
+              g.uniform1f(uUnlitLoc, m.unlit ? 1.0 : 0.0);
+              g.uniform1f(uFeatherLoc, m.featherShadow ? 1.0 : 0.0);
+              g.uniform1f(uDetailLoc, m.detail !== undefined ? m.detail : 0.0);
               const mtKey = String(m.material || "standard").toLowerCase();
-              g.uniform1f(uLoc("uMatType"), MAT_TYPE_MAP[mtKey] !== undefined ? MAT_TYPE_MAP[mtKey] : 0);
+              g.uniform1f(uMatTypeLoc, MAT_TYPE_MAP[mtKey] !== undefined ? MAT_TYPE_MAP[mtKey] : 0);
 
-              g.drawElements(m.wireframe ? g.LINES : g.TRIANGLES, geo.idx.length, g.UNSIGNED_SHORT, 0);
+              g.drawElements(m.wireframe ? g.LINES : g.TRIANGLES, tg._idxU16.length, g.UNSIGNED_SHORT, 0);
             }
           };
 
@@ -530,34 +553,32 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
           if (trans.length) drawList(trans, true);
           g.depthMask(true);
 
-          // PASS 4A: Dual-Filter Kawase Bloom Extraction & Blur
+          // PASS 4A: Dual-Filter Kawase Bloom Extraction & Blur (Skipped on SwiftShader Preview)
           const qw = Math.max(2, W >> 2), qh = Math.max(2, H >> 2);
           g.disable(g.DEPTH_TEST); g.disable(g.BLEND); g.disable(g.CULL_FACE);
-          if (postCfg.bloom > 0.005 || postCfg.godRays > 0.005) {
+          if (runBloom) {
             g.bindFramebuffer(g.FRAMEBUFFER, glBloomFboA);
             g.viewport(0, 0, hw, hh);
             g.useProgram(glBloomExtProg);
             g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, glSceneTex);
-            g.uniform1i(g.getUniformLocation(glBloomExtProg, "uTex"), 0);
-            g.uniform1f(g.getUniformLocation(glBloomExtProg, "uThreshold"), postCfg.bloomThreshold);
+            g.uniform1i(getGlUniform(g, glBloomExtProg, "uTex"), 0);
+            g.uniform1f(getGlUniform(g, glBloomExtProg, "uThreshold"), postCfg.bloomThreshold);
             drawGlQuad(g, glBloomExtProg);
 
-            // Downsample blur A -> B
             g.bindFramebuffer(g.FRAMEBUFFER, glBloomFboB);
             g.viewport(0, 0, qw, qh);
             g.useProgram(glBloomBlurProg);
             g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, glBloomTexA);
-            g.uniform1i(g.getUniformLocation(glBloomBlurProg, "uTex"), 0);
-            g.uniform2f(g.getUniformLocation(glBloomBlurProg, "uTexel"), 1 / hw, 1 / hh);
-            g.uniform1f(g.getUniformLocation(glBloomBlurProg, "uSpread"), 2.2);
+            g.uniform1i(getGlUniform(g, glBloomBlurProg, "uTex"), 0);
+            g.uniform2f(getGlUniform(g, glBloomBlurProg, "uTexel"), 1 / hw, 1 / hh);
+            g.uniform1f(getGlUniform(g, glBloomBlurProg, "uSpread"), 2.2);
             drawGlQuad(g, glBloomBlurProg);
 
-            // Upsample blur B -> A
             g.bindFramebuffer(g.FRAMEBUFFER, glBloomFboA);
             g.viewport(0, 0, hw, hh);
             g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, glBloomTexB);
-            g.uniform2f(g.getUniformLocation(glBloomBlurProg, "uTexel"), 1 / qw, 1 / qh);
-            g.uniform1f(g.getUniformLocation(glBloomBlurProg, "uSpread"), 2.8);
+            g.uniform2f(getGlUniform(g, glBloomBlurProg, "uTexel"), 1 / qw, 1 / qh);
+            g.uniform1f(getGlUniform(g, glBloomBlurProg, "uSpread"), 2.8);
             drawGlQuad(g, glBloomBlurProg);
           }
 
@@ -566,28 +587,28 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
           g.viewport(0, 0, W, H);
           g.clearColor(0, 0, 0, 0); g.clear(g.COLOR_BUFFER_BIT);
           g.useProgram(glPostProg);
-          const pLoc = (n) => g.getUniformLocation(glPostProg, n);
+          const pLoc = (n) => getGlUniform(g, glPostProg, n);
           g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, glSceneTex); g.uniform1i(pLoc("uSceneTex"), 0);
           g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, glBloomTexA); g.uniform1i(pLoc("uBloomTex"), 1);
           g.activeTexture(g.TEXTURE2); g.bindTexture(g.TEXTURE_2D, glDepthTex); g.uniform1i(pLoc("uDepthTex"), 2);
 
-          // Project Directional Sun position into Screen UV for Volumetric God Rays
           const sunWorld = [eye[0] + kx * 40, eye[1] + ky * 40, eye[2] + kz * 40];
           const sunProj = sceneApi.project(sunWorld);
           const sunU = sunProj.visible ? clampNum(sunProj.x / W, -0.3, 1.3) : 0.75;
           const sunV = sunProj.visible ? clampNum(1.0 - sunProj.y / H, -0.3, 1.3) : 0.85;
+          const scSun = skyCfg ? hexToVec3(skyCfg.sun) : lights.keyCol;
 
           g.uniform2f(pLoc("uRes"), W, H);
-          g.uniform1f(pLoc("uBloomStrength"), postCfg.bloom);
+          g.uniform1f(pLoc("uBloomStrength"), effBloom);
           g.uniform1f(pLoc("uDofFocus"), clampNum(postCfg.dofFocus / 36.0, 0.02, 1.0));
-          g.uniform1f(pLoc("uDofAperture"), postCfg.dofAperture);
-          g.uniform1f(pLoc("uGodRayStrength"), postCfg.godRays);
+          g.uniform1f(pLoc("uDofAperture"), effDofAperture);
+          g.uniform1f(pLoc("uGodRayStrength"), effGodRays);
           g.uniform2f(pLoc("uSunScreen"), sunU, sunV);
-          g.uniform3fv(pLoc("uSunColor"), new Float32Array(skyCfg ? hexToVec3(skyCfg.sun) : lights.keyCol));
+          g.uniform3f(pLoc("uSunColor"), scSun[0], scSun[1], scSun[2]);
           const lutId = LUT_MAP[String(postCfg.lut || "none").toLowerCase()] || 0;
           g.uniform1f(pLoc("uLutId"), lutId);
           g.uniform1f(pLoc("uVibrancy"), postCfg.vibrancy);
-          g.uniform1f(pLoc("uChromatic"), postCfg.chromatic);
+          g.uniform1f(pLoc("uChromatic"), useLight ? 0.0 : postCfg.chromatic);
           g.uniform1f(pLoc("uVignette"), postCfg.vignette);
           g.uniform1f(pLoc("uHasSky"), skyCfg ? 1.0 : 0.0);
           drawGlQuad(g, glPostProg);
@@ -602,7 +623,7 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
     },
 
     shader(targetCtx, fragCode, uniforms) {
-      const g = ensureGl(W, H, 1024);
+      const g = ensureGl(W, H, isExportMode ? 2048 : 512);
       if (!g) return false;
       const fsSrc = SHADER_FS_HEADER + "\n" + String(fragCode || "") +
         "\nvoid main(){ vec2 uv=(vUv-0.5)*vec2(uRes.x/max(1.0,uRes.y),1.0); vec4 c=renderShader(uv); gl_FragColor=vec4(c.rgb*c.a, c.a); }";
@@ -621,12 +642,12 @@ function makeG3dApi(W, H, tSec, pVal, randFn, isExportMode) {
       g.disable(g.DEPTH_TEST); g.disable(g.BLEND); g.disable(g.CULL_FACE);
       g.clearColor(0, 0, 0, 0); g.clear(g.COLOR_BUFFER_BIT);
       g.useProgram(prog);
-      const uResLoc = g.getUniformLocation(prog, "uRes"); if (uResLoc) g.uniform2f(uResLoc, W, H);
-      const uTimeLoc = g.getUniformLocation(prog, "uTime"); if (uTimeLoc) g.uniform1f(uTimeLoc, tSec);
-      const uProgLoc = g.getUniformLocation(prog, "uProgress"); if (uProgLoc) g.uniform1f(uProgLoc, pVal);
+      const uResLoc = getGlUniform(g, prog, "uRes"); if (uResLoc) g.uniform2f(uResLoc, W, H);
+      const uTimeLoc = getGlUniform(g, prog, "uTime"); if (uTimeLoc) g.uniform1f(uTimeLoc, tSec);
+      const uProgLoc = getGlUniform(g, prog, "uProgress"); if (uProgLoc) g.uniform1f(uProgLoc, pVal);
       if (uniforms && typeof uniforms === "object") {
         Object.keys(uniforms).forEach((k) => {
-          const loc = g.getUniformLocation(prog, k); if (!loc) return;
+          const loc = getGlUniform(g, prog, k); if (!loc) return;
           const v = uniforms[k];
           if (typeof v === "number") g.uniform1f(loc, v);
           else if (typeof v === "string" && v.startsWith("#")) { const c = hexToVec3(v); g.uniform3f(loc, c[0], c[1], c[2]); }

@@ -47,54 +47,76 @@ function applyDeform(geo, def) {
   return recalcSmoothNormals({ pos: p, norm: geo.norm, uv: geo.uv, idx: geo.idx });
 }
 
+const __g3dGeoCache = new Map();
+function getCachedG3dGeo(key, builderFn) {
+  let g = __g3dGeoCache.get(key);
+  if (g) return g;
+  g = ensureTypedGeo(builderFn());
+  if (__g3dGeoCache.size >= 256) {
+    const first = __g3dGeoCache.keys().next().value;
+    __g3dGeoCache.delete(first);
+  }
+  __g3dGeoCache.set(key, g);
+  return g;
+}
+
 function buildEllipsoidGeo(rx, ry, rz, segs) {
   const s = clampNum(segs || 28, 8, 52), rings = Math.max(6, Math.round(s * 0.72));
-  const pos = [], norm = [], uv = [], idx = [];
-  for (let y = 0; y <= rings; y++) {
-    const v = y / rings, phi = v * Math.PI, sp = Math.sin(phi), cp = Math.cos(phi);
-    for (let x = 0; x <= s; x++) {
-      const u = x / s, th = u * Math.PI * 2, ux = sp * Math.cos(th), uy = cp, uz = sp * Math.sin(th);
-      pos.push(ux * rx, uy * ry, uz * rz);
-      let nx = ux / (rx || 1), ny = uy / (ry || 1), nz = uz / (rz || 1);
-      const nm = Math.hypot(nx, ny, nz) || 1;
-      norm.push(nx / nm, ny / nm, nz / nm); uv.push(u, 1 - v);
+  const key = "el:" + Math.round(rx * 1000) + ":" + Math.round(ry * 1000) + ":" + Math.round(rz * 1000) + ":" + s;
+  return getCachedG3dGeo(key, () => {
+    const pos = [], norm = [], uv = [], idx = [];
+    for (let y = 0; y <= rings; y++) {
+      const v = y / rings, phi = v * Math.PI, sp = Math.sin(phi), cp = Math.cos(phi);
+      for (let x = 0; x <= s; x++) {
+        const u = x / s, th = u * Math.PI * 2, ux = sp * Math.cos(th), uy = cp, uz = sp * Math.sin(th);
+        pos.push(ux * rx, uy * ry, uz * rz);
+        let nx = ux / (rx || 1), ny = uy / (ry || 1), nz = uz / (rz || 1);
+        const nm = Math.hypot(nx, ny, nz) || 1;
+        norm.push(nx / nm, ny / nm, nz / nm); uv.push(u, 1 - v);
+      }
     }
-  }
-  const st = s + 1;
-  for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, a + 1, b, a + 1, b + 1, b); }
-  return { pos, norm, uv, idx };
+    const st = s + 1;
+    for (let y = 0; y < rings; y++) for (let x = 0; x < s; x++) { const a = y * st + x, b = a + st; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+    return { pos, norm, uv, idx };
+  });
 }
 
 function buildBoxGeo(w, h, d) {
-  const hx = w * 0.5, hy = h * 0.5, hz = d * 0.5;
-  const faces = [
-    [[0, 0, 1], [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]],
-    [[0, 0, -1], [hx, -hy, -hz], [-hx, -hy, -hz], [-hx, hy, -hz], [hx, hy, -hz]],
-    [[0, 1, 0], [-hx, hy, hz], [hx, hy, hz], [hx, hy, -hz], [-hx, hy, -hz]],
-    [[0, -1, 0], [-hx, -hy, -hz], [hx, -hy, -hz], [hx, -hy, hz], [-hx, -hy, hz]],
-    [[1, 0, 0], [hx, -hy, hz], [hx, -hy, -hz], [hx, hy, -hz], [hx, hy, hz]],
-    [[-1, 0, 0], [-hx, -hy, -hz], [-hx, -hy, hz], [-hx, hy, hz], [-hx, hy, -hz]]
-  ];
-  const pos = [], norm = [], uv = [], idx = [];
-  for (let f = 0; f < 6; f++) {
-    const fc = faces[f], n = fc[0], base = f * 4;
-    for (let k = 1; k <= 4; k++) { pos.push(fc[k][0], fc[k][1], fc[k][2]); norm.push(n[0], n[1], n[2]); }
-    uv.push(0, 0, 1, 0, 1, 1, 0, 1); idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-  return { pos, norm, uv, idx };
+  const key = "bx:" + Math.round(w * 1000) + ":" + Math.round(h * 1000) + ":" + Math.round(d * 1000);
+  return getCachedG3dGeo(key, () => {
+    const hx = w * 0.5, hy = h * 0.5, hz = d * 0.5;
+    const faces = [
+      [[0, 0, 1], [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]],
+      [[0, 0, -1], [hx, -hy, -hz], [-hx, -hy, -hz], [-hx, hy, -hz], [hx, hy, -hz]],
+      [[0, 1, 0], [-hx, hy, hz], [hx, hy, hz], [hx, hy, -hz], [-hx, hy, -hz]],
+      [[0, -1, 0], [-hx, -hy, -hz], [hx, -hy, -hz], [hx, -hy, hz], [-hx, -hy, hz]],
+      [[1, 0, 0], [hx, -hy, hz], [hx, -hy, -hz], [hx, hy, -hz], [hx, hy, hz]],
+      [[-1, 0, 0], [-hx, -hy, -hz], [-hx, -hy, hz], [-hx, hy, hz], [-hx, hy, -hz]]
+    ];
+    const pos = [], norm = [], uv = [], idx = [];
+    for (let f = 0; f < 6; f++) {
+      const fc = faces[f], n = fc[0], base = f * 4;
+      for (let k = 1; k <= 4; k++) { pos.push(fc[k][0], fc[k][1], fc[k][2]); norm.push(n[0], n[1], n[2]); }
+      uv.push(0, 0, 1, 0, 1, 1, 0, 1); idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+    return { pos, norm, uv, idx };
+  });
 }
 
 function buildShadowDiscGeo(rx, rz, segs) {
   const s = clampNum(segs || 32, 12, 48);
-  const pos = [0, 0, 0], norm = [0, 1, 0], uv = [0.5, 0.5], idx = [];
-  for (let i = 0; i <= s; i++) {
-    const a = (i / s) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
-    pos.push(ca * rx, 0, sa * rz);
-    norm.push(0, 1, 0);
-    uv.push(0.5 + ca * 0.5, 0.5 + sa * 0.5);
-  }
-  for (let i = 1; i <= s; i++) idx.push(0, i + 1, i);
-  return { pos, norm, uv, idx };
+  const key = "sd:" + Math.round(rx * 1000) + ":" + Math.round(rz * 1000) + ":" + s;
+  return getCachedG3dGeo(key, () => {
+    const pos = [0, 0, 0], norm = [0, 1, 0], uv = [0.5, 0.5], idx = [];
+    for (let i = 0; i <= s; i++) {
+      const a = (i / s) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      pos.push(ca * rx, 0, sa * rz);
+      norm.push(0, 1, 0);
+      uv.push(0.5 + ca * 0.5, 0.5 + sa * 0.5);
+    }
+    for (let i = 1; i <= s; i++) idx.push(0, i + 1, i);
+    return { pos, norm, uv, idx };
+  });
 }
 
 function buildQuadPlaneGeo(w, h) {
@@ -166,45 +188,51 @@ function buildTorusGeo(R, r, segsU, segsV) {
 }
 
 function buildPetalGeo(w, h, cup, curl) {
-  const nu = 6, nv = 8, grid = [];
-  for (let j = 0; j <= nv; j++) {
-    const v = j / nv, halfW = w * 0.5 * Math.max(0.08, Math.sin(Math.pow(v, 0.72) * Math.PI) * (0.85 + 0.25 * Math.sin(v * Math.PI)));
-    const y = v * h, curlZ = Math.pow(v, 2.6) * (curl || 0.16), row = [];
-    for (let i = 0; i <= nu; i++) { const u = i / nu, su = (u - 0.5) * 2; row.push([su * halfW, y, -(1 - su * su) * (cup || 0.12) * Math.sin(v * Math.PI) + curlZ]); }
-    grid.push(row);
-  }
-  const pos = [], norm = [], uv = [], idx = [];
-  for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
-    const p0 = grid[j][i], pL = grid[j][Math.max(0, i - 1)], pR = grid[j][Math.min(nu, i + 1)];
-    const pD = grid[Math.max(0, j - 1)][i], pU = grid[Math.min(nv, j + 1)][i];
-    const tx = pR[0] - pL[0], ty = pR[1] - pL[1], tz = pR[2] - pL[2], bx = pU[0] - pD[0], by = pU[1] - pD[1], bz = pU[2] - pD[2];
-    let nx = ty * bz - tz * by, ny = tz * bx - tx * bz, nz = tx * by - ty * bx; const nm = Math.hypot(nx, ny, nz) || 1;
-    pos.push(p0[0], p0[1], p0[2]); norm.push(nx / nm, ny / nm, nz / nm); uv.push(i / nu, j / nv);
-  }
-  const st = nu + 1;
-  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * st + i, b = a + st; idx.push(a, a + 1, b, b, a + 1, b + 1); }
-  return { pos, norm, uv, idx };
+  const key = "pt:" + Math.round(w * 1000) + ":" + Math.round(h * 1000) + ":" + Math.round((cup || 0.12) * 1000) + ":" + Math.round((curl || 0.16) * 1000);
+  return getCachedG3dGeo(key, () => {
+    const nu = 6, nv = 8, grid = [];
+    for (let j = 0; j <= nv; j++) {
+      const v = j / nv, halfW = w * 0.5 * Math.max(0.08, Math.sin(Math.pow(v, 0.72) * Math.PI) * (0.85 + 0.25 * Math.sin(v * Math.PI)));
+      const y = v * h, curlZ = Math.pow(v, 2.6) * (curl || 0.16), row = [];
+      for (let i = 0; i <= nu; i++) { const u = i / nu, su = (u - 0.5) * 2; row.push([su * halfW, y, -(1 - su * su) * (cup || 0.12) * Math.sin(v * Math.PI) + curlZ]); }
+      grid.push(row);
+    }
+    const pos = [], norm = [], uv = [], idx = [];
+    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+      const p0 = grid[j][i], pL = grid[j][Math.max(0, i - 1)], pR = grid[j][Math.min(nu, i + 1)];
+      const pD = grid[Math.max(0, j - 1)][i], pU = grid[Math.min(nv, j + 1)][i];
+      const tx = pR[0] - pL[0], ty = pR[1] - pL[1], tz = pR[2] - pL[2], bx = pU[0] - pD[0], by = pU[1] - pD[1], bz = pU[2] - pD[2];
+      let nx = ty * bz - tz * by, ny = tz * bx - tx * bz, nz = tx * by - ty * bx; const nm = Math.hypot(nx, ny, nz) || 1;
+      pos.push(p0[0], p0[1], p0[2]); norm.push(nx / nm, ny / nm, nz / nm); uv.push(i / nu, j / nv);
+    }
+    const st = nu + 1;
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * st + i, b = a + st; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+    return { pos, norm, uv, idx };
+  });
 }
 
 function buildLeafGeo(len, wid, bend) {
-  const nu = 6, nv = 8, grid = [];
-  for (let j = 0; j <= nv; j++) {
-    const v = j / nv, halfW = wid * 0.5 * Math.sin(Math.pow(v, 0.78) * Math.PI), z = v * len;
-    const archY = Math.sin(v * Math.PI) * (bend || 0.14) - v * v * (bend || 0.14) * 1.1, row = [];
-    for (let i = 0; i <= nu; i++) { const u = i / nu, su = (u - 0.5) * 2; row.push([su * halfW, archY + Math.abs(su) * 0.06 * wid * Math.sin(v * Math.PI), z]); }
-    grid.push(row);
-  }
-  const pos = [], norm = [], uv = [], idx = [];
-  for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
-    const p0 = grid[j][i], pL = grid[j][Math.max(0, i - 1)], pR = grid[j][Math.min(nu, i + 1)];
-    const pD = grid[Math.max(0, j - 1)][i], pU = grid[Math.min(nv, j + 1)][i];
-    const tx = pR[0] - pL[0], ty = pR[1] - pL[1], tz = pR[2] - pL[2], bx = pU[0] - pD[0], by = pU[1] - pD[1], bz = pU[2] - pD[2];
-    let nx = ty * bz - tz * by, ny = tz * bx - tx * bz, nz = tx * by - ty * bx; const nm = Math.hypot(nx, ny, nz) || 1;
-    pos.push(p0[0], p0[1], p0[2]); norm.push(nx / nm, ny / nm, nz / nm); uv.push(i / nu, j / nv);
-  }
-  const st = nu + 1;
-  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * st + i, b = a + st; idx.push(a, b, a + 1, b, b + 1, a + 1); }
-  return { pos, norm, uv, idx };
+  const key = "lf:" + Math.round(len * 1000) + ":" + Math.round(wid * 1000) + ":" + Math.round((bend || 0.14) * 1000);
+  return getCachedG3dGeo(key, () => {
+    const nu = 6, nv = 8, grid = [];
+    for (let j = 0; j <= nv; j++) {
+      const v = j / nv, halfW = wid * 0.5 * Math.sin(Math.pow(v, 0.78) * Math.PI), z = v * len;
+      const archY = Math.sin(v * Math.PI) * (bend || 0.14) - v * v * (bend || 0.14) * 1.1, row = [];
+      for (let i = 0; i <= nu; i++) { const u = i / nu, su = (u - 0.5) * 2; row.push([su * halfW, archY + Math.abs(su) * 0.06 * wid * Math.sin(v * Math.PI), z]); }
+      grid.push(row);
+    }
+    const pos = [], norm = [], uv = [], idx = [];
+    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+      const p0 = grid[j][i], pL = grid[j][Math.max(0, i - 1)], pR = grid[j][Math.min(nu, i + 1)];
+      const pD = grid[Math.max(0, j - 1)][i], pU = grid[Math.min(nv, j + 1)][i];
+      const tx = pR[0] - pL[0], ty = pR[1] - pL[1], tz = pR[2] - pL[2], bx = pU[0] - pD[0], by = pU[1] - pD[1], bz = pU[2] - pD[2];
+      let nx = ty * bz - tz * by, ny = tz * bx - tx * bz, nz = tx * by - ty * bx; const nm = Math.hypot(nx, ny, nz) || 1;
+      pos.push(p0[0], p0[1], p0[2]); norm.push(nx / nm, ny / nm, nz / nm); uv.push(i / nu, j / nv);
+    }
+    const st = nu + 1;
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * st + i, b = a + st; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    return { pos, norm, uv, idx };
+  });
 }
 
 function buildTubeGeo(pathPts, rStart, rEnd, segs) {
@@ -445,7 +473,10 @@ function attachWorldHelpers(nodeApi, tSec, randFn) {
   };
 
   nodeApi.scatter = (type, opts) => {
-    const o = opts || {}, count = clampNum(o.count || 28, 4, 140), rad = o.radius || 2.1, minR = o.minRadius || 0.4;
+    const o = opts || {};
+    const rawCount = clampNum(o.count || 28, 4, 140);
+    const count = nodeApi.__lightPreview ? Math.max(6, Math.round(rawCount * 0.45)) : rawCount;
+    const rad = o.radius || 2.1, minR = o.minRadius || 0.4;
     const hFn = o.heightFn || (() => 0);
     const seedOff = o.seedOffset || 1200;
     for (let i = 0; i < count; i++) {
@@ -454,10 +485,10 @@ function attachWorldHelpers(nodeApi, tSec, randFn) {
       const x = Math.cos(a) * r, z = Math.sin(a) * r, y = hFn(x, z);
       const sc = lerpNum(0.65, 1.25, randFn(seedOff + i * 3 + 2)) * (o.scale || 1);
       if (type === "pebbles") {
-        nodeApi.ellipsoid([x, y + 0.03 * sc, z], [0.10 * sc, 0.055 * sc, 0.08 * sc], [0, a, 0], { color: i % 2 === 0 ? "#8E8A82" : "#A6A298", material: "clay" }, 12);
+        nodeApi.ellipsoid([x, y + 0.03 * sc, z], [0.10 * sc, 0.055 * sc, 0.08 * sc], [0, a, 0], { color: i % 2 === 0 ? "#8E8A82" : "#A6A298", material: "clay" }, 10);
       } else if (type === "wildflowers") {
         nodeApi.cylinder([x, y + 0.07 * sc, z], 0.012 * sc, 0.01 * sc, 0.14 * sc, [0, 0, 0], { color: "#28924C" }, 8);
-        nodeApi.sphere([x, y + 0.15 * sc, z], 0.042 * sc, { color: i % 3 === 0 ? "#FFD166" : (i % 3 === 1 ? "#FF8FA3" : "#FFFFFF"), emissive: i % 3 === 0 ? "#A87400" : "#000000" }, 10);
+        nodeApi.sphere([x, y + 0.15 * sc, z], 0.042 * sc, { color: i % 3 === 0 ? "#FFD166" : (i % 3 === 1 ? "#FF8FA3" : "#FFFFFF"), emissive: i % 3 === 0 ? "#A87400" : "#000000" }, 8);
       } else {
         nodeApi.grassTuft([x, y, z], sc * 0.85, i % 2 === 0 ? (o.color || "#258C44") : "#34A858");
       }

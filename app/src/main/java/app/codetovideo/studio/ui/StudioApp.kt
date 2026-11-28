@@ -94,6 +94,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -103,11 +104,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.codetovideo.studio.MainActivity
+import app.codetovideo.studio.ai.MasterPromptV21
 import app.codetovideo.studio.core.ProjectMetadataParser
 import app.codetovideo.studio.core.PropType
 import app.codetovideo.studio.core.StudioMetadata
 import app.codetovideo.studio.core.StudioProject
+import app.codetovideo.studio.core.StudioSubtitleConfig
+import app.codetovideo.studio.core.StudioTemplatesV21
 import app.codetovideo.studio.render.AudioAuditionPlayer
+import app.codetovideo.studio.render.RuntimeErrorInfo
+import app.codetovideo.studio.render.WebCanvasRuntime
 import app.codetovideo.studio.storage.GalleryRepository
 import app.codetovideo.studio.storage.GalleryVideo
 import kotlinx.coroutines.Dispatchers
@@ -853,14 +859,32 @@ fun StudioApp(activity: MainActivity) {
     var refreshProjects by remember { mutableIntStateOf(0) }
     var refreshGallery by remember { mutableIntStateOf(0) }
     var previewTick by remember { mutableIntStateOf(0) }
-    var creatorMode by remember { mutableStateOf(true) }
+    var creatorMode by remember { mutableStateOf(false) }
     var showAiSettings by remember { mutableStateOf(false) }
     var showQuickRevise by remember { mutableStateOf(false) }
+    var showMediaManager by remember { mutableStateOf(false) }
+    var runtimeError by remember { mutableStateOf<RuntimeErrorInfo?>(null) }
+    var lastRenderMs by remember { mutableStateOf(0.0) }
+    var threeLoaded by remember { mutableStateOf(false) }
+    var fontsPreloaded by remember { mutableStateOf(false) }
+    var engineInitializing by remember { mutableStateOf(true) }
+    var initStageMessage by remember { mutableStateOf("Menyiapkan Engine 3D…") }
+    var isSoftwareGpu by remember { mutableStateOf(false) }
+    var previewScale by remember { mutableStateOf(0.5f) }
     val aiHistory = remember { androidx.compose.runtime.mutableStateListOf<StudioProject>() }
 
     val pal = remember(isLightGlass) { glassPalette(isLightGlass) }
+    val clipboard = LocalClipboardManager.current
 
-    LaunchedEffect(project.projectId, project.name, project.sourceBody, project.propsValues, project.renderSettings) {
+    LaunchedEffect(
+        project.projectId,
+        project.name,
+        project.sourceBody,
+        project.propsValues,
+        project.renderSettings,
+        project.audioCueOverrides,
+        project.subtitleConfig
+    ) {
         delay(650)
         runCatching { repository.save(project) }
             .onSuccess { savedLabel = "Tersimpan lokal"; refreshProjects++ }
@@ -870,7 +894,15 @@ fun StudioApp(activity: MainActivity) {
         while (true) {
             renderReady = activity.canvasRuntime.ready
             exportSupported = activity.canvasRuntime.exportSupported
-            delay(500)
+            runtimeError = activity.canvasRuntime.lastError
+            lastRenderMs = activity.canvasRuntime.lastRenderMs
+            threeLoaded = activity.canvasRuntime.threeLoaded
+            fontsPreloaded = activity.canvasRuntime.fontsPreloaded
+            engineInitializing = activity.canvasRuntime.engineInitializing
+            initStageMessage = activity.canvasRuntime.initStageMessage
+            isSoftwareGpu = activity.canvasRuntime.isSoftwareGpu
+            previewScale = activity.canvasRuntime.lastPreviewScale
+            delay(300)
         }
     }
 
@@ -900,7 +932,7 @@ fun StudioApp(activity: MainActivity) {
                 activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> input.copyTo(output) }
                     ?: throw IllegalStateException("File tujuan tidak bisa dibuka.")
             }
-        }.onSuccess { Toast.makeText(activity, "Dokumentasi v1.1 disimpan", Toast.LENGTH_SHORT).show() }
+        }.onSuccess { Toast.makeText(activity, "Dokumentasi v2.1 disimpan", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(activity, it.message ?: "Gagal menyimpan Docs", Toast.LENGTH_LONG).show() }
     }
 
@@ -937,6 +969,55 @@ fun StudioApp(activity: MainActivity) {
                         }
                     }
                 )
+                if (selectedTab == StudioTab.EDITOR) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(pal.iosBlue.copy(alpha = 0.22f), pal.iosGreen.copy(alpha = 0.18f))
+                                    )
+                                )
+                                .border(1.dp, pal.iosBlue.copy(alpha = 0.5f), RoundedCornerShape(50))
+                                .clickable {
+                                    clipboard.setText(AnnotatedString(MasterPromptV21.buildCopyablePrompt()))
+                                    Toast.makeText(activity, "Master Prompt v2.1 disalin! Tempel ke Gemini.", Toast.LENGTH_LONG).show()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                                .testTag("copy_master_prompt_button"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "✨ Salin Master Prompt v2.1 untuk Gemini",
+                                color = pal.textPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Brush.verticalGradient(listOf(pal.panelTop, pal.panelBot)))
+                                .border(1.dp, pal.borderMid, RoundedCornerShape(50))
+                                .clickable { showMediaManager = true }
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                                .testTag("open_media_manager_button"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("🖼 Media", color = pal.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     AnimatedContent(
                         targetState = selectedTab,
@@ -973,6 +1054,9 @@ fun StudioApp(activity: MainActivity) {
                                     activity = activity,
                                     project = project,
                                     pal = pal,
+                                    runtimeError = runtimeError,
+                                    onDismissRuntimeError = { activity.canvasRuntime.clearError(); runtimeError = null },
+                                    onOpenMedia = { showMediaManager = true },
                                     onProjectChange = { project = it },
                                     onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
                                     onExport = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
@@ -985,7 +1069,16 @@ fun StudioApp(activity: MainActivity) {
                                 onProjectChange = { project = it },
                                 runtime = activity.canvasRuntime,
                                 ready = renderReady,
+                                engineInitializing = engineInitializing,
+                                initStageMessage = initStageMessage,
                                 exportSupported = exportSupported,
+                                threeLoaded = threeLoaded,
+                                fontsPreloaded = fontsPreloaded,
+                                isSoftwareGpu = isSoftwareGpu,
+                                previewScale = previewScale,
+                                lastRenderMs = lastRenderMs,
+                                runtimeError = runtimeError,
+                                onDismissRuntimeError = { activity.canvasRuntime.clearError(); runtimeError = null },
                                 isRendering = isRendering,
                                 renderDone = renderDone,
                                 renderTotal = renderTotal,
@@ -996,7 +1089,7 @@ fun StudioApp(activity: MainActivity) {
                                 onPickVoiceover = { pickVoiceover.launch(arrayOf("audio/*")) },
                                 onPreview = { activity.canvasRuntime.preview(project, it) },
                                 onRender = {
-                                    renderMessage = "Memuat 36 Studio SFX & Voiceover, menyiapkan encoder MP4…"
+                                    renderMessage = "Memuat 123 Studio SFX, Font & Three.js, menyiapkan encoder MP4…"
                                     isRendering = true
                                     renderDone = 0
                                     renderTotal = project.renderSettings.totalFrames()
@@ -1049,7 +1142,7 @@ fun StudioApp(activity: MainActivity) {
                                 keyRefresh = refreshProjects,
                                 currentProjectId = project.projectId,
                                 onOpen = { opened -> project = opened; selectedTab = StudioTab.EDITOR },
-                                onNew = { project = repository.save(StudioProject(name = "New Liquid Motion")); selectedTab = StudioTab.EDITOR },
+                                onNew = { project = repository.save(StudioProject(name = "Cinema Engine v2.1")); selectedTab = StudioTab.EDITOR },
                                 onDuplicate = { item -> repository.duplicate(item); refreshProjects++ },
                                 onRename = { item, name ->
                                     val updated = repository.save(item.copy(name = name.take(80)))
@@ -1064,7 +1157,7 @@ fun StudioApp(activity: MainActivity) {
                                 onImport = { importProject.launch(arrayOf("application/json", "text/json")) },
                                 onExportCurrent = { exportProject.launch("${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json") }
                             )
-                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v1.1.md") })
+                            StudioTab.DOCS -> DocsScreen(activity = activity, pal = pal, onSave = { saveDocs.launch("render-video-code-skill-v2.1.md") })
                         }
                     }
                 }
@@ -1102,6 +1195,14 @@ fun StudioApp(activity: MainActivity) {
                     activity = activity,
                     isLight = isLightGlass,
                     onDismiss = { showAiSettings = false }
+                )
+            }
+            if (showMediaManager) {
+                MediaAssetManagerDialog(
+                    activity = activity,
+                    isLight = isLightGlass,
+                    onAssetsChanged = { previewTick++ },
+                    onDismiss = { showMediaManager = false }
                 )
             }
         }
@@ -1166,7 +1267,7 @@ private fun TopGlassHeader(
             ) {
                 Box(Modifier.size(6.dp).background(if (webReady) pal.iosGreen else Color(0xFFFFC966), CircleShape))
                 Spacer(Modifier.width(5.dp))
-                Text("v1.1.1", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("v2.1.0", color = pal.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Text(status, color = pal.textMuted, fontSize = 8.5.sp)
         }
@@ -1210,6 +1311,9 @@ private fun EditorScreen(
     activity: MainActivity,
     project: StudioProject,
     pal: GlassPalette,
+    runtimeError: RuntimeErrorInfo?,
+    onDismissRuntimeError: () -> Unit,
+    onOpenMedia: () -> Unit,
     onProjectChange: (StudioProject) -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit
@@ -1220,24 +1324,31 @@ private fun EditorScreen(
     var showAudition by remember { mutableStateOf(false) }
 
     PageColumn {
-        SectionHeader("Editor Pro", "Engine v1.1 · 4-Pass GPU 3D · 36 Studio Acoustic SFX, Live Render & Voiceover.", pal)
+        SectionHeader("Editor Pro v2.1", "Cinema Engine Pro · Three.js WebGL2 · Liquid Glass · rig2D · 123 SFX Offline.", pal)
         GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text("SOURCE.JS", color = pal.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.8.sp)
                     Text("${project.sourceBody.length} / 262.144 karakter", color = pal.textMuted, fontSize = 10.sp)
                 }
-                GlassMiniPill("Templates", pal) { showTemplates = true }
+                GlassMiniPill("Templates v2.1", pal) { showTemplates = true }
                 GlassMiniPill("Reset", pal) {
-                    onProjectChange(project.copy(sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap()))
+                    onProjectChange(
+                        project.copy(
+                            sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE,
+                            propsValues = emptyMap(),
+                            audioCueOverrides = null,
+                            subtitleConfig = StudioSubtitleConfig()
+                        )
+                    )
                 }
             }
-            // Bar aksi cepat Tempel / Salin / Hapus (praktis untuk kode panjang)
+            // Bar aksi cepat Tempel / Salin / Media / Hapus
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GlassMiniPill("Tempel", pal) {
                     val clip = clipboard.getText()?.text.orEmpty()
                     if (clip.isNotBlank()) {
-                        onProjectChange(project.copy(sourceBody = clip.take(ProjectMetadataParser.MAX_SOURCE_CHARS)))
+                        onProjectChange(project.copy(sourceBody = clip.take(ProjectMetadataParser.MAX_SOURCE_CHARS), audioCueOverrides = null))
                         Toast.makeText(activity, "Kode ditempel (${clip.length} karakter)", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(activity, "Clipboard kosong", Toast.LENGTH_SHORT).show()
@@ -1247,6 +1358,7 @@ private fun EditorScreen(
                     clipboard.setText(AnnotatedString(project.sourceBody))
                     Toast.makeText(activity, "SOURCE.JS disalin", Toast.LENGTH_SHORT).show()
                 }
+                GlassMiniPill("Media", pal) { onOpenMedia() }
                 GlassMiniPill("Hapus", pal) {
                     onProjectChange(project.copy(sourceBody = ""))
                 }
@@ -1263,7 +1375,7 @@ private fun EditorScreen(
                 BasicTextField(
                     value = project.sourceBody,
                     onValueChange = { value -> if (value.length <= ProjectMetadataParser.MAX_SOURCE_CHARS) onProjectChange(project.copy(sourceBody = value)) },
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().testTag("source_code_editor"),
                     textStyle = TextStyle(color = pal.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 16.sp),
                     cursorBrush = SolidColor(pal.iosBlue)
                 )
@@ -1273,24 +1385,43 @@ private fun EditorScreen(
                 GlassSecondaryButton("Export JSON", pal, onClick = onExport, modifier = Modifier.weight(1f))
             }
         }
+        if (runtimeError != null) {
+            CompactErrorPill(
+                activity = activity,
+                error = runtimeError,
+                isLight = pal.isLight,
+                onDismiss = onDismissRuntimeError
+            )
+        }
         if (parsed.isFailure) {
-            GlassPanel(pal) {
-                Text("Metadata Error", color = Color(0xFFFF6B7A), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text(parsed.exceptionOrNull()?.message ?: "Metadata tidak valid.", color = pal.textSecondary, fontSize = 12.sp)
+            val metaError = remember(parsed.exceptionOrNull()?.message, project.sourceBody) {
+                WebCanvasRuntime.buildSmartError(
+                    rawMessage = parsed.exceptionOrNull()?.message ?: "Metadata /*<studio-meta>*/ tidak valid.",
+                    line = 2,
+                    col = null,
+                    sourceBody = project.sourceBody
+                )
             }
+            CompactErrorPill(
+                activity = activity,
+                error = metaError,
+                isLight = pal.isLight,
+                onDismiss = {}
+            )
         } else {
             val metadata = parsed.getOrThrow()
-            if (metadata.audio.cues.isNotEmpty() || metadata.audio.ambience != "none") {
+            val effectiveAudio = project.effectiveAudioConfig(metadata)
+            if (effectiveAudio.cues.isNotEmpty() || effectiveAudio.ambience != "none") {
                 GlassPanel(pal) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).background(pal.iosGreen, CircleShape))
                         Spacer(Modifier.width(8.dp))
-                        Text("REAL STUDIO SFX READY", color = pal.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.8.sp)
+                        Text("STUDIO SOUND ENGINE v2.0 READY", color = pal.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.8.sp)
                         Spacer(Modifier.weight(1f))
-                        GlassMiniPill("▶ Studio SFX", pal) { showAudition = true }
+                        GlassMiniPill("▶ 123 SFX", pal) { showAudition = true }
                     }
                     Text(
-                        "Bed: ${metadata.audio.ambience} · ${metadata.audio.cues.size} cues WAV asli sinkron otomatis ke AAC MP4.",
+                        "Bed: ${effectiveAudio.ambience} · ${effectiveAudio.cues.size} cues aktif · auto-ducking & WAV offline siap ke AAC MP4.",
                         color = pal.textSecondary, fontSize = 12.sp
                     )
                 }
@@ -1305,31 +1436,86 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { showTemplates = false },
             containerColor = pal.dialogBg,
-            title = { Text("Template v1.1 Blender-Grade 3D", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text("Template Showcase v2.1 & v1.1", color = pal.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassSecondaryButton("3D Pixar Garden Story · Bloom + DoF (15s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D Pixar Garden Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.PIXAR_GARDEN_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 15)))
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("SHOWCASE v2.1 — CINEMA ENGINE PRO", color = pal.iosBlue, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.8.sp)
+                    GlassSecondaryButton("1. 2D Explainer & Produk · rig2D + Magnifier + Karaoke (8s)", pal, onClick = {
+                        onProjectChange(
+                            project.copy(
+                                name = "2D Explainer & Produk Pro",
+                                sourceBody = StudioTemplatesV21.EXPLAINER_2D_PRODUCT,
+                                propsValues = emptyMap(),
+                                audioCueOverrides = null,
+                                subtitleConfig = StudioSubtitleConfig(),
+                                renderSettings = project.renderSettings.copy(durationSeconds = 8)
+                            )
+                        )
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("2. 2D Cutaway & Swarm · world2D + Ant Colony (10s)", pal, onClick = {
+                        onProjectChange(
+                            project.copy(
+                                name = "2D Cutaway & Ant Swarm",
+                                sourceBody = StudioTemplatesV21.CUTAWAY_2D_SWARM,
+                                propsValues = emptyMap(),
+                                audioCueOverrides = null,
+                                subtitleConfig = StudioSubtitleConfig(),
+                                renderSettings = project.renderSettings.copy(durationSeconds = 10)
+                            )
+                        )
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("3. 3D Diorama Arsitektur · Three.js Villa + Pool (10s)", pal, onClick = {
+                        onProjectChange(
+                            project.copy(
+                                name = "3D Diorama Arsitektur",
+                                sourceBody = StudioTemplatesV21.DIORAMA_3D_ARCHITECTURE,
+                                propsValues = emptyMap(),
+                                audioCueOverrides = null,
+                                subtitleConfig = StudioSubtitleConfig(),
+                                renderSettings = project.renderSettings.copy(durationSeconds = 10)
+                            )
+                        )
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+                    GlassSecondaryButton("4. Liquid Glass Refraction · WebGL2 Shader + Editorial (6s)", pal, onClick = {
+                        onProjectChange(
+                            project.copy(
+                                name = "Liquid Glass Refraction",
+                                sourceBody = StudioTemplatesV21.LIQUID_GLASS_REFRACTION,
+                                propsValues = emptyMap(),
+                                audioCueOverrides = null,
+                                subtitleConfig = StudioSubtitleConfig(),
+                                renderSettings = project.renderSettings.copy(durationSeconds = 6)
+                            )
+                        )
+                        showTemplates = false
+                    }, modifier = Modifier.fillMaxWidth())
+
+                    Spacer(Modifier.height(6.dp))
+                    Text("TEMPLATE KLASIK v1.1 (KOMPATIBEL 100%)", color = pal.textMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                    GlassSecondaryButton("3D Pixar Garden Story · g3d Bloom + DoF (15s)", pal, onClick = {
+                        onProjectChange(project.copy(name = "3D Pixar Garden Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.PIXAR_GARDEN_3D, propsValues = emptyMap(), audioCueOverrides = null, renderSettings = project.renderSettings.copy(durationSeconds = 15)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                     GlassSecondaryButton("3D Anime Cel-Shaded · Toon + Outline (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D Anime Cel-Shaded", sourceBody = app.codetovideo.studio.core.StudioTemplates.ANIME_CEL_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        onProjectChange(project.copy(name = "3D Anime Cel-Shaded", sourceBody = app.codetovideo.studio.core.StudioTemplates.ANIME_CEL_3D, propsValues = emptyMap(), audioCueOverrides = null, renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                     GlassSecondaryButton("3D Plant vs Pest · Creatures + AR Pins (15s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D Plant vs Pest Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.PLANT_VS_PEST_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 15)))
+                        onProjectChange(project.copy(name = "3D Plant vs Pest Story", sourceBody = app.codetovideo.studio.core.StudioTemplates.PLANT_VS_PEST_3D, propsValues = emptyMap(), audioCueOverrides = null, renderSettings = project.renderSettings.copy(durationSeconds = 15)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                     GlassSecondaryButton("3D Apple Hardware · Live 2D→3D Screen (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D Apple Hardware", sourceBody = app.codetovideo.studio.core.StudioTemplates.APPLE_HARDWARE_3D, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
+                        onProjectChange(project.copy(name = "3D Apple Hardware", sourceBody = app.codetovideo.studio.core.StudioTemplates.APPLE_HARDWARE_3D, propsValues = emptyMap(), audioCueOverrides = null, renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                     GlassSecondaryButton("3D Liquid Glass · GPU Raymarch Shader (10s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "3D Liquid Glass Shader", sourceBody = app.codetovideo.studio.core.StudioTemplates.LIQUID_GLASS_SHADER, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 10)))
-                        showTemplates = false
-                    }, modifier = Modifier.fillMaxWidth())
-                    GlassSecondaryButton("iOS 26 Liquid Glass Hero · 2D Bento (5s)", pal, onClick = {
-                        onProjectChange(project.copy(name = "iOS 26 Liquid Glass Hero", sourceBody = app.codetovideo.studio.core.DEFAULT_SOURCE, propsValues = emptyMap(), renderSettings = project.renderSettings.copy(durationSeconds = 5)))
+                        onProjectChange(project.copy(name = "3D Liquid Glass Shader", sourceBody = app.codetovideo.studio.core.StudioTemplates.LIQUID_GLASS_SHADER, propsValues = emptyMap(), audioCueOverrides = null, renderSettings = project.renderSettings.copy(durationSeconds = 10)))
                         showTemplates = false
                     }, modifier = Modifier.fillMaxWidth())
                 }
@@ -1406,7 +1592,16 @@ private fun RenderScreen(
     onProjectChange: (StudioProject) -> Unit,
     runtime: app.codetovideo.studio.render.WebCanvasRuntime,
     ready: Boolean,
+    engineInitializing: Boolean,
+    initStageMessage: String,
     exportSupported: Boolean,
+    threeLoaded: Boolean,
+    fontsPreloaded: Boolean,
+    isSoftwareGpu: Boolean,
+    previewScale: Float,
+    lastRenderMs: Double,
+    runtimeError: RuntimeErrorInfo?,
+    onDismissRuntimeError: () -> Unit,
     isRendering: Boolean,
     renderDone: Int,
     renderTotal: Int,
@@ -1434,15 +1629,26 @@ private fun RenderScreen(
     val previewHeight by animateDpAsState(if (previewExpanded) 480.dp else 270.dp, spring(0.75f, 380f), label = "prev_h")
 
     val parsedMeta = remember(project.sourceBody) { runCatching { ProjectMetadataParser.parse(project.sourceBody) }.getOrNull() }
-    val cueCount = parsedMeta?.audio?.cues?.size ?: 0
-    val ambienceName = parsedMeta?.audio?.ambience ?: "none"
+    val effectiveAudio = remember(project.audioCueOverrides, parsedMeta) { project.effectiveAudioConfig(parsedMeta) }
+    val effectiveSubtitles = remember(project.subtitleConfig, parsedMeta) { project.effectiveSubtitles(parsedMeta) }
+    val cueCount = effectiveAudio.cues.size
+    val ambienceName = effectiveAudio.ambience
     val hasVoiceover = project.renderSettings.voiceoverUri.isNotBlank()
     val hasAudioInCode = cueCount > 0 || ambienceName != "none" || hasVoiceover
 
     LaunchedEffect(project.renderSettings.totalFrames()) {
         previewFrame = previewFrame.coerceIn(0, (project.renderSettings.totalFrames() - 1).coerceAtLeast(0))
     }
-    LaunchedEffect(project.projectId, project.sourceBody, project.propsValues, project.renderSettings, previewFrame, ready, externalRefreshTick) {
+    LaunchedEffect(
+        project.projectId,
+        project.sourceBody,
+        project.propsValues,
+        project.renderSettings,
+        project.subtitleConfig,
+        previewFrame,
+        ready,
+        externalRefreshTick
+    ) {
         if (ready && !isRendering) onPreview(previewFrame)
     }
     LaunchedEffect(isPlayingPreview, isRendering, ready, previewHalfSpeed, project.renderSettings) {
@@ -1461,19 +1667,52 @@ private fun RenderScreen(
     val elapsedSec = if (isRendering && renderStartMs > 0L) ((System.currentTimeMillis() - renderStartMs).coerceAtLeast(100L) / 1000.0) else 0.0
     val speedFps = if (isRendering && renderDone > 1 && elapsedSec > 0.2) (renderDone / elapsedSec) else 0.0
     val etaSec = if (speedFps > 0.1 && renderTotal > renderDone) ((renderTotal - renderDone) / speedFps).roundToInt() else 0
+    val currentPlayheadSec = previewFrame.toDouble() / project.renderSettings.fps.coerceAtLeast(1).toDouble()
 
     PageColumn(scrollState = renderScroll) {
-        SectionHeader("Render Studio", "Live Preview · Real Studio SFX + Voiceover AAC MP4", pal)
+        SectionHeader("Render Studio v2.1", "Live WebGL2 + 2D Preview · Sub-Frame Motion Blur · 123 SFX & Subtitle", pal)
 
         GlassPanel(pal) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     if (isRendering) "LIVE RENDER MONITOR" else "LIVE CANVAS PREVIEW",
                     color = pal.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp
                 )
                 Spacer(Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (project.renderSettings.showSafeZone) Color(0xCCFF3B5C) else pal.wellBg)
+                        .border(1.dp, if (project.renderSettings.showSafeZone) Color(0xFFFF6B7A) else pal.borderMid, RoundedCornerShape(50))
+                        .clickable {
+                            onProjectChange(
+                                project.copy(renderSettings = project.renderSettings.copy(showSafeZone = !project.renderSettings.showSafeZone))
+                            )
+                        }
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                        .testTag("safe_zone_toggle")
+                ) {
+                    Text(
+                        "Safe Zone",
+                        color = if (project.renderSettings.showSafeZone) Color.White else pal.textSecondary,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 GlassMiniPill(if (previewExpanded) "Perkecil" else "Perbesar", pal) { previewExpanded = !previewExpanded }
-                Text(if (ready) "READY" else "LOADING", color = if (ready) pal.iosGreen else Color(0xFFFFC966), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = when {
+                        !ready -> "LOADING"
+                        engineInitializing -> "INIT 3D"
+                        else -> "READY"
+                    },
+                    color = when {
+                        !ready || engineInitializing -> Color(0xFF60B8FF)
+                        else -> pal.iosGreen
+                    },
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
             Box(
                 modifier = Modifier
@@ -1497,9 +1736,16 @@ private fun RenderScreen(
                         modifier = Modifier.fillMaxSize().background(Color(0xFF06080D))
                     )
                 }
-                if (!ready) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
+                if (project.renderSettings.showSafeZone && !isRendering) {
+                    TikTokSafeZoneOverlay(modifier = Modifier.fillMaxSize())
+                }
+                if (!isRendering && (!ready || engineInitializing)) {
+                    PreviewInitLoadingPill(
+                        stageMessage = if (!ready) "Memuat Canvas…" else initStageMessage
+                    )
+                }
 
-                // LIVE TELEMETRY HUD melayang di atas preview saat rendering!
+                // LIVE TELEMETRY HUD melayang di atas preview!
                 if (isRendering) {
                     Row(
                         modifier = Modifier
@@ -1527,6 +1773,29 @@ private fun RenderScreen(
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text("F $renderDone / $renderTotal", color = Color(0xFFE4ECF7), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    }
+                } else if (ready && !engineInitializing) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xB80A0F18))
+                            .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(50))
+                            .padding(horizontal = 9.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Box(Modifier.size(6.dp).background(pal.iosGreen, CircleShape))
+                        val scaleLabel = String.format(java.util.Locale.US, "%.1f×", previewScale.coerceIn(0.2f, 1.0f))
+                        val tags = buildString {
+                            append("PREVIEW $scaleLabel")
+                            if (lastRenderMs > 0.1) append(" · ${lastRenderMs.roundToInt()}ms")
+                            if (isSoftwareGpu) append(" · FAST")
+                            if (threeLoaded) append(" · 3D")
+                            if (fontsPreloaded && !isSoftwareGpu) append(" · FONT")
+                        }
+                        Text(tags, color = Color(0xFFE4ECF7), fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     }
                 }
             }
@@ -1568,17 +1837,26 @@ private fun RenderScreen(
             }
         }
 
-        // KARTU AUDIO MIXER, REAL SFX AUDITION & IMPORT VOICEOVER
+        if (runtimeError != null) {
+            CompactErrorPill(
+                activity = activity,
+                error = runtimeError,
+                isLight = pal.isLight,
+                onDismiss = onDismissRuntimeError
+            )
+        }
+
+        // KARTU AUDIO MIXER v2.0, 123 STUDIO SFX, AUTO-DUCKING & INTERACTIVE TIMELINE
         GlassPanel(pal) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("AUDIO MIXER & VOICEOVER", color = pal.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                    Text("STUDIO SOUND ENGINE v2.0", color = pal.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
                     Text(
-                        if (hasAudioInCode) "$cueCount Real SFX · bed: $ambienceName" else "Tambahkan blok audio atau pilih voiceover",
+                        if (hasAudioInCode) "$cueCount SFX cues · bed: $ambienceName" else "108 SFX + 15 Ambience + Voiceover",
                         color = if (hasAudioInCode) pal.iosGreen else pal.textMuted, fontSize = 10.sp
                     )
                 }
-                GlassMiniPill("▶ Studio SFX", pal) { showAudition = true }
+                GlassMiniPill("▶ 123 SFX", pal) { showAudition = true }
                 Spacer(Modifier.width(8.dp))
                 LiquidGlassSwitch(
                     checked = project.renderSettings.includeAudio,
@@ -1658,28 +1936,59 @@ private fun RenderScreen(
                             pal = pal
                         )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Auto-Ducking Ambience", color = pal.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                            Text("Kecilkan musik latar otomatis saat suara narasi masuk", color = pal.textMuted, fontSize = 9.5.sp)
-                        }
-                        LiquidGlassSwitch(
-                            checked = project.renderSettings.autoDucking,
-                            pal = pal,
-                            onCheckedChange = { onProjectChange(project.copy(renderSettings = project.renderSettings.copy(autoDucking = it))) }
-                        )
-                    }
                 }
-                val detectedCues = parsedMeta?.audio?.cues.orEmpty()
-                if (detectedCues.isNotEmpty()) {
-                    AudioCueTimelineStrip(
-                        activity = activity,
-                        cues = detectedCues,
-                        durationSeconds = project.renderSettings.durationSeconds,
-                        isLight = pal.isLight
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Auto-Ducking Ambience (VO + Impact)", color = pal.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Text("Kecilkan ambience otomatis saat Voiceover atau Impact SFX masuk", color = pal.textMuted, fontSize = 9.5.sp)
+                    }
+                    LiquidGlassSwitch(
+                        checked = project.renderSettings.autoDucking,
+                        pal = pal,
+                        onCheckedChange = { onProjectChange(project.copy(renderSettings = project.renderSettings.copy(autoDucking = it))) }
                     )
                 }
+
+                AudioCueTimelineStrip(
+                    activity = activity,
+                    audioConfig = effectiveAudio,
+                    durationSeconds = project.renderSettings.durationSeconds,
+                    currentPlayheadSec = currentPlayheadSec,
+                    hasUnsyncedOverrides = project.audioCueOverrides != null,
+                    isLight = pal.isLight,
+                    onCuesChanged = { newCues ->
+                        onProjectChange(project.copy(audioCueOverrides = newCues))
+                    },
+                    onWriteBackToCode = {
+                        val updatedSource = ProjectMetadataParser.writeBackMetadata(
+                            source = project.sourceBody,
+                            cues = effectiveAudio.cues
+                        )
+                        onProjectChange(project.copy(sourceBody = updatedSource, audioCueOverrides = null))
+                        Toast.makeText(activity, "Pin SFX ditulis ke /*<studio-meta>*/!", Toast.LENGTH_SHORT).show()
+                    }
+                )
             }
+        }
+
+        // KARTU VIRAL SUBTITLE / KARAOKE ENGINE
+        GlassPanel(pal) {
+            ViralSubtitlePanel(
+                config = effectiveSubtitles,
+                isLight = pal.isLight,
+                onConfigChange = { nextSub ->
+                    onProjectChange(project.copy(subtitleConfig = nextSub))
+                },
+                onWriteBackToCode = {
+                    val updatedSource = ProjectMetadataParser.writeBackMetadata(
+                        source = project.sourceBody,
+                        subtitles = effectiveSubtitles
+                    )
+                    onProjectChange(project.copy(sourceBody = updatedSource, subtitleConfig = StudioSubtitleConfig()))
+                    Toast.makeText(activity, "Subtitle ditulis ke /*<studio-meta>*/!", Toast.LENGTH_SHORT).show()
+                }
+            )
         }
 
         GlassPanel(pal) {
@@ -1693,6 +2002,19 @@ private fun RenderScreen(
             GlassSegmentBar("Frame rate (FPS)", listOf("24", "30", "60"), project.renderSettings.fps.toString(), pal) {
                 onProjectChange(project.copy(renderSettings = project.renderSettings.copy(fps = it.toInt())))
             }
+            val blurSelected = when (project.renderSettings.motionBlurSamples) {
+                4 -> "4x"
+                2 -> "2x"
+                else -> "Off"
+            }
+            GlassSegmentBar("Sub-Frame Motion Blur (Cinema Shutter)", listOf("Off", "2x", "4x"), blurSelected, pal) { pick ->
+                val samples = when (pick) {
+                    "4x" -> 4
+                    "2x" -> 2
+                    else -> 1
+                }
+                onProjectChange(project.copy(renderSettings = project.renderSettings.copy(motionBlurSamples = samples)))
+            }
             GlassSegmentBar("Quality", listOf("low", "medium", "high", "ultra"), project.renderSettings.quality, pal) {
                 onProjectChange(project.copy(renderSettings = project.renderSettings.copy(quality = it)))
             }
@@ -1701,7 +2023,8 @@ private fun RenderScreen(
             }
             val (w, h) = project.renderSettings.dimensions()
             val codecLabel = if (project.renderSettings.includeAudio && hasAudioInCode) "H.264 + AAC / MP4" else "H.264 / MP4"
-            Text("Output: ${w}×${h} px · ${project.renderSettings.totalFrames()} frames · $codecLabel", color = pal.textMuted, fontSize = 10.sp)
+            val blurTag = if (project.renderSettings.motionBlurSamples > 1) " · Blur ${project.renderSettings.motionBlurSamples}x" else ""
+            Text("Output: ${w}×${h} px · ${project.renderSettings.totalFrames()} frames$blurTag · $codecLabel", color = pal.textMuted, fontSize = 10.sp)
         }
 
         GlassPanel(pal) {
@@ -1716,7 +2039,13 @@ private fun RenderScreen(
                 Text(renderMessage, color = pal.textSecondary, fontSize = 11.sp)
                 GlassSecondaryButton("Cancel Render", pal, onClick = onCancel, modifier = Modifier.fillMaxWidth())
             } else {
-                GlassPrimaryButton("Render MP4", pal, onClick = onRender, enabled = ready && exportSupported, modifier = Modifier.fillMaxWidth())
+                GlassPrimaryButton(
+                    "Render MP4",
+                    pal,
+                    onClick = onRender,
+                    enabled = ready && exportSupported,
+                    modifier = Modifier.fillMaxWidth().testTag("render_mp4_button")
+                )
                 if (renderMessage.isNotBlank()) Text(renderMessage, color = pal.textSecondary, fontSize = 11.sp)
             }
         }
@@ -1874,11 +2203,20 @@ private fun DocsScreen(activity: MainActivity, pal: GlassPalette, onSave: () -> 
     val content = remember { activity.assets.open("docs/skill.md").bufferedReader().use { it.readText() } }
     val clipboard = LocalClipboardManager.current
     PageColumn {
-        SectionHeader("Docs v1.1", "Kitab Blender-Grade 4-Pass GPU 3D, 12 PBR Shaders & Motion Director.", pal)
+        SectionHeader("Docs v2.1", "Cinema Engine Pro · Three.js WebGL2, Liquid Glass, rig2D, world2D, 123 SFX & Subtitle.", pal)
+        GlassPrimaryButton(
+            text = "✨ Salin Master Prompt v2.1 untuk Gemini",
+            pal = pal,
+            onClick = {
+                clipboard.setText(AnnotatedString(MasterPromptV21.buildCopyablePrompt()))
+                Toast.makeText(activity, "Master Prompt v2.1 disalin! Tempel ke Gemini.", Toast.LENGTH_LONG).show()
+            },
+            modifier = Modifier.fillMaxWidth().testTag("docs_copy_master_prompt_button")
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GlassPrimaryButton("Salin Docs", pal, onClick = {
+            GlassSecondaryButton("Salin Docs Lengkap", pal, onClick = {
                 clipboard.setText(AnnotatedString(content))
-                Toast.makeText(activity, "Docs v1.1 disalin", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Docs v2.1 disalin", Toast.LENGTH_SHORT).show()
             }, modifier = Modifier.weight(1f))
             GlassSecondaryButton("Unduh .md", pal, onClick = onSave, modifier = Modifier.weight(1f))
         }
